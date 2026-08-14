@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **The reasoning effort level now appears beside the model name**, as `Opus 5 high`. Two sessions on the same model behave differently at high and medium effort, and the model name alone could not tell them apart. Effort is read from the session transcript, which is the only source that reports it — Claude Code's statusline payload does not — so it is shown only when a transcript recorded one, and older sessions that predate the field simply keep the plain model name. Controlled by `claudeStatusline.showEffort`, on by default, and it follows `showModel`: hiding the model hides the effort with it.
+
+### Changed
+
+- **Reset countdowns no longer have a separator to their left**, reading `Weekly  19%  ↻ 2d 2h` rather than `Weekly  19%  │  ↻ 2d 2h`. A countdown only ever qualifies the percentage beside it, and the separator announced it as a reading in its own right. The pairing itself is unchanged: each countdown still sits with the window it belongs to, and `showSessionReset` and `showWeeklyReset` still control them independently.
+
 ## [1.2.1] — 2026-08-14
 
 ### Fixed

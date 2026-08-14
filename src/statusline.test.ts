@@ -9,6 +9,7 @@ import * as manifest from '../package.json';
 // that assert on the default line rather than silently absorbed everywhere.
 const DEFAULTS: SegmentSettings = {
   showModel: true,
+  showEffort: true,
   showContextBar: true,
   barWidth: 'medium',
   barStyle: 'solid',
@@ -23,6 +24,7 @@ const DEFAULTS: SegmentSettings = {
 
 const DATA: StatusData = {
   model: 'Opus 5',
+  effort: 'high',
   contextPct: 68,
   contextWindow: 200_000,
   contextTokens: 136_000,
@@ -53,6 +55,42 @@ test('the folder is hidden unless asked for', () => {
 // has to survive the default change, or this is a deletion wearing a setting.
 test('the folder comes back when the setting asks for it', () => {
   assert.match(buildStatusText(DATA, settings({ showFolder: true })), /ccstatus/);
+});
+
+// Effort answers a question the model name cannot: two sessions on the same
+// model behave differently at high and medium, and that difference is the
+// reason to look at the status bar at all.
+test('the effort level appears beside the model', () => {
+  assert.match(buildStatusText(DATA, settings()), /\$\(sparkle\) Opus 5 high {2}│/);
+});
+
+// Claude Code only began recording effort recently, and the statusline payload
+// never carries it, so an empty effort is the ordinary state for older sessions
+// rather than a fault. Rendering the separator anyway would leave a dangling
+// "Opus 5 · " that reads as a truncated model name.
+test('an unknown effort leaves the model name alone', () => {
+  const text = buildStatusText({ ...DATA, effort: '' }, settings());
+
+  // The model must be followed straight by the separator: with the effort gone,
+  // a stray space would be the only trace left of it.
+  assert.match(text, /\$\(sparkle\) Opus 5 {2}│/);
+});
+
+// The setting has to be able to remove it, or it is not a setting.
+test('the effort disappears when its setting is off', () => {
+  const text = buildStatusText(DATA, settings({ showEffort: false }));
+
+  assert.match(text, /Opus 5/);
+  assert.doesNotMatch(text, /high/);
+});
+
+// Effort qualifies the model rather than standing on its own, so a user who
+// hid the model did not ask to keep a bare "· high" floating on the line.
+test('hiding the model hides the effort with it', () => {
+  const text = buildStatusText(DATA, settings({ showModel: false }));
+
+  assert.doesNotMatch(text, /Opus 5/);
+  assert.doesNotMatch(text, /high/);
 });
 
 const NOT_INSTALLED: StatusData = { ...DATA, claudeCodeInstalled: false };
@@ -120,7 +158,7 @@ test('the default status line is session state only', () => {
   assert.doesNotMatch(text, /ccstatus/);
   assert.doesNotMatch(text, /main/);
 
-  assert.match(text, /Opus 5/);
+  assert.match(text, /Opus 5 high/);
   assert.match(text, /136k \/ 200k/);
   assert.match(text, /68%/);
   assert.match(text, /Session  12%/);

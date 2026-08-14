@@ -340,8 +340,8 @@ function findTranscripts(cwd: string): string[] {
     .map(f => f.file);
 }
 
-function parseTranscript(filePath: string): { rawModel: string; totalTokens: number; sessionMin: number | null } {
-  let rawModel = ''; let totalTokens = 0; let sessionMin: number | null = null;
+function parseTranscript(filePath: string): { rawModel: string; effort: string; totalTokens: number; sessionMin: number | null } {
+  let rawModel = ''; let effort = ''; let totalTokens = 0; let sessionMin: number | null = null;
   try {
     const stat = fs.statSync(filePath);
     const elapsed = Math.floor((Date.now() - stat.birthtimeMs) / 60000);
@@ -351,7 +351,14 @@ function parseTranscript(filePath: string): { rawModel: string; totalTokens: num
       try {
         const e = JSON.parse(lines[i]);
         const c = e.message?.model || e.model || null;
-        if (c && typeof c === 'string' && c.startsWith('claude')) { rawModel = c; }
+        if (c && typeof c === 'string' && c.startsWith('claude')) {
+          rawModel = c;
+          // Taken from the entry that supplied the model, not from whichever
+          // entry mentioned effort most recently. A session that switched
+          // models mid-run would otherwise pair one model with another's
+          // effort and state something that never happened.
+          if (typeof e.effort === 'string') { effort = e.effort; }
+        }
       } catch { continue; }
     }
     for (const line of lines) {
@@ -366,7 +373,7 @@ function parseTranscript(filePath: string): { rawModel: string; totalTokens: num
       } catch { continue; }
     }
   } catch { /* ignore */ }
-  return { rawModel, totalTokens, sessionMin };
+  return { rawModel, effort, totalTokens, sessionMin };
 }
 
 // ─── Core data fetch ──────────────────────────────────────────────────────────
@@ -427,6 +434,11 @@ async function fetchStatusData(): Promise<StatusData> {
 
   // ── Model & context ───────────────────────────────────────────────────────
   let rawModel = cachedModel && cachedModel !== 'Claude' ? cachedModel : '';
+  // Effort is only ever known from a transcript, while the model name usually
+  // comes from the cache. Pairing the two across sources would let a cached
+  // model be labelled with an effort from a different session, so this is set
+  // only where the model it qualifies was read from the same transcript entry.
+  let effort = '';
   let contextPct = 0;
   let sessionMin: number | null = null;
   let source = rateLimitsAvailable ? (cacheStale ? 'stale-cache' : 'rate-cache') : 'none';
@@ -457,6 +469,15 @@ async function fetchStatusData(): Promise<StatusData> {
     if (newestParsed.rawModel) {
       contextWindow = resolveContextWindow(newestParsed.rawModel, contextWindowOverride);
       resolvedFromTranscript = true;
+      // The cache names the model but never its effort, so without this the
+      // effort segment would vanish in the common case of a fresh cache. The
+      // transcript may be adopted only when it agrees about which model is
+      // running: same model, same session, so its effort describes what the
+      // line already says. A disagreement means they are describing different
+      // sessions, and no effort is better than one attached to the wrong model.
+      if (prettifyModelName(newestParsed.rawModel) === prettifyModelName(rawModel)) {
+        effort = newestParsed.effort;
+      }
     }
 
     // Detect new session: transcript created AFTER last cache write
@@ -491,6 +512,7 @@ async function fetchStatusData(): Promise<StatusData> {
 
     if (!rawModel && newestParsed.rawModel) {
       rawModel = newestParsed.rawModel;
+      effort = newestParsed.effort;
       if (source === 'none') { source = 'transcript'; }
     }
   } else if (!cacheStale && cachedContextPct > 0) {
@@ -502,7 +524,7 @@ async function fetchStatusData(): Promise<StatusData> {
     for (const t of transcripts.slice(1, 10)) {
       if (t.includes('/subagents/')) { continue; }
       const p = parseTranscript(t);
-      if (p.rawModel) { rawModel = p.rawModel; break; }
+      if (p.rawModel) { rawModel = p.rawModel; effort = p.effort; break; }
     }
   }
 
@@ -540,6 +562,7 @@ async function fetchStatusData(): Promise<StatusData> {
 
   return {
     model: prettifyModelName(rawModel),
+    effort,
     rawModel, contextPct, contextWindow, contextTokens, branch,
     limits,
     sessionMin, folder, cwd, source,
@@ -559,6 +582,7 @@ async function fetchStatusData(): Promise<StatusData> {
 function readSegmentSettings(cfg: vscode.WorkspaceConfiguration): SegmentSettings {
   return {
     showModel:           cfg.get('showModel') ?? true,
+    showEffort:          cfg.get('showEffort') ?? true,
     showContextBar:      cfg.get('showContextBar') ?? true,
     barWidth:            cfg.get<string>('barWidth') ?? 'medium',
     barStyle:            cfg.get<string>('barStyle') ?? 'solid',
@@ -577,7 +601,7 @@ function buildTooltip(data: StatusData): vscode.MarkdownString {
   md.isTrusted = true;
   md.appendMarkdown(`## $(sparkle) Claude Statusline\n\n`);
   md.appendMarkdown(`| | |\n|---|---|\n`);
-  md.appendMarkdown(`| **Model** | \`${data.model}\` |\n`);
+  md.appendMarkdown(`| **Model** | \`${data.model}\`${data.effort ? ` · \`${data.effort}\` effort` : ''} |\n`);
   md.appendMarkdown(`| **Context** | ${colorThreshold(data.contextPct) || '🟢'} \`${progressBar(data.contextPct, 20)}\` **${data.contextPct}%** (${formatTokenCount(data.contextTokens)} / ${formatWindowSize(data.contextWindow)}) |\n`);
   if (data.branch) { md.appendMarkdown(`| **Branch** | \`${data.branch}\` |\n`); }
   {
@@ -658,7 +682,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('claudeStatusline.showDetails', () => {
       if (!lastData) { return; }
       vscode.window.showInformationMessage([
-        `Model: ${lastData.model}`,
+        `Model: ${lastData.model}${lastData.effort ? ` (${lastData.effort} effort)` : ''}`,
         `Context: ${lastData.contextPct}% (${formatTokenCount(lastData.contextTokens)} / ${formatWindowSize(lastData.contextWindow)})`,
         lastData.rateLimitsAvailable
           ? `Session: ${lastData.limits.session ? `${lastData.limits.session.pct}%` : 'unavailable'}` +
