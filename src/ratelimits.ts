@@ -52,6 +52,61 @@ export function resolveRateLimits(sources: RateLimitSources): ResolvedRateLimits
   };
 }
 
+// How long a remembered reading stays worth showing. Matches the age at which
+// the on-disk rate cache is discarded, so a percentage cannot outlive the file
+// it originally came from.
+export const REMEMBER_DISCARD_MS = 86_400_000;
+
+// A reading worth falling back on, and when it was taken.
+export interface RememberedRateLimits {
+  limits: ResolvedRateLimits;
+  at: number;
+}
+
+export interface HeldRateLimits {
+  limits: ResolvedRateLimits;
+  stale: boolean;
+}
+
+// What to render when a refresh resolved nothing. The sources behind the
+// percentages are intermittent — the cache is only rewritten while the user is
+// active, and the API call it falls back to can fail on its own — so a refresh
+// resolving nothing is an ordinary event rather than a sign the quota is
+// unknown. Holding the previous reading keeps a momentary gap from emptying the
+// status bar, at the cost of a percentage that is marked as ageing.
+export function rememberRateLimits(
+  fresh: ResolvedRateLimits,
+  remembered: RememberedRateLimits | null,
+  now: number = Date.now(),
+): HeldRateLimits {
+  if (fresh.session || fresh.weekly) { return { limits: fresh, stale: false }; }
+  if (!remembered) { return { limits: fresh, stale: false }; }
+  // Past the discard age the reading stops being evidence of anything, and the
+  // status bar goes back to saying "unknown" by omission.
+  if (now - remembered.at > REMEMBER_DISCARD_MS) { return { limits: fresh, stale: false }; }
+  return { limits: remembered.limits, stale: true };
+}
+
+// The outcome of the last call to the usage API, and when it was made.
+export interface FetchAttempt {
+  lastAttempt: number;
+  succeeded: boolean;
+}
+
+// How long to wait before calling the usage API again after a failure. The
+// status bar refreshes far more often than this, so without a pause every
+// refresh during an outage would mean another call.
+export const FETCH_RETRY_MS = 60_000;
+
+// Whether the usage API is worth calling right now. A failure earns a pause:
+// whatever caused it — an expired token, no network, an unreachable host —
+// will almost certainly still be true a few seconds later.
+export function shouldAttemptFetch(last: FetchAttempt | null, now: number = Date.now()): boolean {
+  if (!last) { return true; }
+  if (last.succeeded) { return true; }
+  return now - last.lastAttempt >= FETCH_RETRY_MS;
+}
+
 // Utilisation arrives fractional from the API; the status bar deals in whole
 // percents. Unlike the cache, a zero here was actually measured, so it stands
 // on its own without needing a reset time to corroborate it.
@@ -87,7 +142,7 @@ function windowSegments(
   // Colouring is applied per known window, so an omitted one cannot be coloured
   // on the strength of a value that was never measured.
   if (!window) { return []; }
-  const segments = [`${colorThreshold(window.pct)}${label}:${mark}${window.pct}%`];
+  const segments = [`${colorThreshold(window.pct)}${label}  ${mark}${window.pct}%`];
 
   // A window with no reset time — or one already past — contributes no
   // countdown: the same availability rule that governs the percentages,
