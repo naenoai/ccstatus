@@ -1,22 +1,18 @@
 {
-  "name": "claude-statusline",
-  "displayName": "Claude Statusline",
+  "name": "ccstatus",
+  "displayName": "CC Status",
   "description": "Shows Claude Code context usage, model, git branch, rate limits, and session duration in the VS Code status bar.",
   "version": "1.1.0",
-  "publisher": "Brainmetrix",
-  "author": {
-    "name": "Vivek Singh Rajput",
-    "url": "https://github.com/Brainmetrix"
-  },
+  "publisher": "naenoai",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Brainmetrix/claude-statusline.git"
+    "url": "https://github.com/naenoai/ccstatus.git"
   },
   "bugs": {
-    "url": "https://github.com/Brainmetrix/claude-statusline/issues"
+    "url": "https://github.com/naenoai/ccstatus/issues"
   },
-  "homepage": "https://github.com/Brainmetrix/claude-statusline#readme",
+  "homepage": "https://github.com/naenoai/ccstatus#readme",
   "icon": "icon.png",
   "galleryBanner": {
     "color": "#1a0a2e",
@@ -44,7 +40,7 @@
   "main": "./out/extension.js",
   "contributes": {
     "configuration": {
-      "title": "Claude Statusline",
+      "title": "CC Status",
       "properties": {
         "claudeStatusline.scriptPath": {
           "type": "string",
@@ -107,19 +103,19 @@
     "commands": [
       {
         "command": "claudeStatusline.refresh",
-        "title": "Claude Statusline: Refresh Now"
+        "title": "CC Status: Refresh Now"
       },
       {
         "command": "claudeStatusline.showDetails",
-        "title": "Claude Statusline: Show Details"
+        "title": "CC Status: Show Details"
       },
       {
         "command": "claudeStatusline.openSettings",
-        "title": "Claude Statusline: Open Settings"
+        "title": "CC Status: Open Settings"
       },
       {
         "command": "claudeStatusline.diagnose",
-        "title": "Claude Statusline: Run Diagnostics"
+        "title": "CC Status: Run Diagnostics"
       }
     ]
   },
@@ -128,6 +124,8 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc -p ./ --noEmit && tsc --noEmit --strict --module Node16 --target ES2020 --esModuleInterop --skipLibCheck src/*.test.ts",
     "package": "vsce package",
     "publish": "vsce publish"
   },
@@ -138,6 +136,7 @@
     "@typescript-eslint/parser": "^6.21.0",
     "@vscode/vsce": "^2.32.0",
     "eslint": "^8.57.1",
+    "tsx": "^4.23.12",
     "typescript": "^5.9.3"
   }
 }

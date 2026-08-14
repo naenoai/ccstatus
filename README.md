@@ -1,4 +1,4 @@
-# Claude Statusline
+# CC Status
 
 > Claude Code context, model, session usage, weekly limit, git branch — right in your VS Code status bar. Zero setup required.
 
@@ -67,14 +67,18 @@ Hover the status bar item for a link to install Claude Code CLI and unlock all s
 | `claudeStatusline.alignment` | `"left"` | `"left"` or `"right"` |
 | `claudeStatusline.priority` | `100` | Status bar priority |
 
+Settings keys keep the `claudeStatusline.*` prefix from upstream so that existing
+configuration keeps working across the rename. In the settings UI they appear under
+**CC Status**.
+
 ---
 
 ## Commands
 
-- **Claude Statusline: Refresh Now** — Force refresh
-- **Claude Statusline: Show Details** — Quick detail popup
-- **Claude Statusline: Run Diagnostics** — Debug output channel
-- **Claude Statusline: Open Settings** — Jump to settings
+- **CC Status: Refresh Now** — Force refresh
+- **CC Status: Show Details** — Quick detail popup
+- **CC Status: Run Diagnostics** — Debug output channel
+- **CC Status: Open Settings** — Jump to settings
 
 ---
 
@@ -86,6 +90,30 @@ When the cache is stale (>2 min since last CLI prompt), values show with a `~` p
 
 ---
 
+## Development
+
+```bash
+npm install
+npm run compile     # build to out/
+npm test            # unit tests — plain Node, no VS Code host required
+npm run typecheck   # type-check source and tests
+npm run package     # build a .vsix
+```
+
+Tests run under Node's built-in test runner via `tsx`, so they need no editor
+instance. Pure rendering logic lives in `src/format.ts`, which deliberately does
+not import `vscode` — that is what keeps it directly testable.
+
+---
+
+## Credits
+
+A fork of [claude-statusline](https://github.com/Brainmetrix/claude-statusline) by
+[Vivek Singh Rajput](https://github.com/Brainmetrix), extended with an accurate
+context bar, working rate limits, and configurable status line segments.
+
+---
+
 ## License
 
-MIT © [Vivek Singh Rajput](https://github.com/Brainmetrix)
+MIT. Original work © [Vivek Singh Rajput](https://github.com/Brainmetrix); see [LICENSE](LICENSE).
