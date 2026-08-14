@@ -116,13 +116,16 @@ test('unknown windows contribute no segments to the status bar', () => {
   assert.deepEqual(rateLimitSegments({ session: null, weekly: null }, false), []);
 });
 
+// Two spaces rather than a colon: the status bar is a dense line of segments,
+// and the gap separates the label from its figure without adding punctuation
+// to compete with the separators between segments.
 test('a known window renders its label and percentage', () => {
   const segments = rateLimitSegments({
     session: { pct: 42, resetsAt: null },
     weekly: { pct: 13, resetsAt: null },
   }, false);
 
-  assert.deepEqual(segments, ['Session:42%', 'Weekly:13%']);
+  assert.deepEqual(segments, ['Session  42%', 'Weekly  13%']);
 });
 
 // Only the known window appears; the unknown one leaves no trace, not even a
@@ -133,7 +136,7 @@ test('a half-known pair renders only the window that is known', () => {
     weekly: null,
   }, false);
 
-  assert.deepEqual(segments, ['Session:42%']);
+  assert.deepEqual(segments, ['Session  42%']);
 });
 
 // Threshold colouring is a claim about measured usage. An omitted window never
@@ -144,7 +147,7 @@ test('threshold icons appear on measured usage', () => {
     weekly: { pct: 60, resetsAt: null },
   }, false);
 
-  assert.deepEqual(segments, ['$(error)Session:85%', '$(warning)Weekly:60%']);
+  assert.deepEqual(segments, ['$(error)Session  85%', '$(warning)Weekly  60%']);
 });
 
 // The regression guard for the original bug: the all-zeroes cache used to
@@ -170,7 +173,7 @@ test('the session countdown renders immediately after its percentage', () => {
     weekly: null,
   }, false, BOTH_COUNTDOWNS);
 
-  assert.deepEqual(segments, ['$(warning)Session:62%', '↻ 2h 14m']);
+  assert.deepEqual(segments, ['$(warning)Session  62%', '↻ 2h 14m']);
 });
 
 // Both countdowns on one line: each sits beside the percentage it belongs to,
@@ -182,8 +185,8 @@ test('each countdown renders beside its own percentage', () => {
   }, false, BOTH_COUNTDOWNS);
 
   assert.deepEqual(segments, [
-    '$(warning)Session:62%', '↻ 2h 14m',
-    'Weekly:31%', '↻ 3d 4h',
+    '$(warning)Session  62%', '↻ 2h 14m',
+    'Weekly  31%', '↻ 3d 4h',
   ]);
 });
 
@@ -196,7 +199,7 @@ test('a window with no reset time renders its percentage but no countdown', () =
     weekly: { pct: 31, resetsAt: null },
   }, false, BOTH_COUNTDOWNS);
 
-  assert.deepEqual(segments, ['$(warning)Session:62%', '↻ 2h 14m', 'Weekly:31%']);
+  assert.deepEqual(segments, ['$(warning)Session  62%', '↻ 2h 14m', 'Weekly  31%']);
 });
 
 // A reset time in the past is spent, not a countdown of zero. It renders the
@@ -207,7 +210,7 @@ test('a reset time already past renders no countdown', () => {
     weekly: null,
   }, false, BOTH_COUNTDOWNS);
 
-  assert.deepEqual(segments, ['$(warning)Session:62%']);
+  assert.deepEqual(segments, ['$(warning)Session  62%']);
 });
 
 // The two countdowns are separately controlled, so neither setting may reach
@@ -220,17 +223,17 @@ test('each countdown is suppressed only by its own setting', () => {
 
   assert.deepEqual(
     rateLimitSegments(limits, false, { showSessionReset: true, showWeeklyReset: false }),
-    ['$(warning)Session:62%', '↻ 2h 14m', 'Weekly:31%'],
+    ['$(warning)Session  62%', '↻ 2h 14m', 'Weekly  31%'],
   );
 
   assert.deepEqual(
     rateLimitSegments(limits, false, { showSessionReset: false, showWeeklyReset: true }),
-    ['$(warning)Session:62%', 'Weekly:31%', '↻ 3d 4h'],
+    ['$(warning)Session  62%', 'Weekly  31%', '↻ 3d 4h'],
   );
 
   assert.deepEqual(
     rateLimitSegments(limits, false, { showSessionReset: false, showWeeklyReset: false }),
-    ['$(warning)Session:62%', 'Weekly:31%'],
+    ['$(warning)Session  62%', 'Weekly  31%'],
   );
 });
 
@@ -242,7 +245,7 @@ test('stale measurements are marked but still shown', () => {
     weekly: null,
   }, true);
 
-  assert.deepEqual(segments, ['Session:~42%']);
+  assert.deepEqual(segments, ['Session  ~42%']);
 });
 
 // Staleness is a claim about the percentage, which was measured at some past
@@ -254,7 +257,7 @@ test('a countdown from a stale reading is unmarked and still counts down', () =>
     weekly: null,
   }, true, BOTH_COUNTDOWNS);
 
-  assert.deepEqual(segments, ['Session:~42%', '↻ 2h 14m']);
+  assert.deepEqual(segments, ['Session  ~42%', '↻ 2h 14m']);
 });
 
 // The bug behind #27: while the editor sits idle the statusline script never

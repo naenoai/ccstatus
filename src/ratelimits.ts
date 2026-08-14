@@ -142,7 +142,7 @@ function windowSegments(
   // Colouring is applied per known window, so an omitted one cannot be coloured
   // on the strength of a value that was never measured.
   if (!window) { return []; }
-  const segments = [`${colorThreshold(window.pct)}${label}:${mark}${window.pct}%`];
+  const segments = [`${colorThreshold(window.pct)}${label}  ${mark}${window.pct}%`];
 
   // A window with no reset time — or one already past — contributes no
   // countdown: the same availability rule that governs the percentages,

@@ -72,7 +72,7 @@ test('an uninstalled Claude Code reports nothing it cannot measure', () => {
 
   assert.match(text, /Claude/);
   assert.doesNotMatch(text, /68%/);
-  assert.doesNotMatch(text, /Session:/);
+  assert.doesNotMatch(text, /Session/);
   assert.doesNotMatch(text, /136k/);
 });
 
@@ -123,6 +123,6 @@ test('the default status line is session state only', () => {
   assert.match(text, /Opus 5/);
   assert.match(text, /136k \/ 200k/);
   assert.match(text, /68%/);
-  assert.match(text, /Session:12%/);
-  assert.match(text, /Weekly:30%/);
+  assert.match(text, /Session  12%/);
+  assert.match(text, /Weekly  30%/);
 });
