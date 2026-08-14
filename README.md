@@ -17,8 +17,8 @@
 | `Session:6%` | 5-hour rolling session usage |
 | `Weekly:19%` | 7-day weekly usage |
 | `↻ 1h 26m` | Time until session limit resets |
-| `⎇ main` | Git branch of workspace |
-| `📁 my-project` | Current workspace folder |
+| `⎇ main` | Git branch of workspace (off by default) |
+| `📁 my-project` | Current workspace folder (off by default) |
 | `⊙ Team` | Subscription plan |
 
 Colors follow green → yellow → red at 50% and 80% thresholds.
@@ -28,7 +28,7 @@ Colors follow green → yellow → red at 50% and 80% thresholds.
 ## Requirements
 
 - VS Code 1.85+
-- [Claude Code CLI](https://claude.ai/install) (optional — git branch + folder always work without it)
+- [Claude Code CLI](https://claude.ai/install) (optional — git branch + folder still work without it, once enabled)
 
 ---
 
@@ -61,7 +61,8 @@ Hover the status bar item for a link to install Claude Code CLI and unlock all s
 | `claudeStatusline.showModel` | `true` | Show model name |
 | `claudeStatusline.showContextBar` | `true` | Show context window bar |
 | `claudeStatusline.showRateLimits` | `true` | Show Session/Weekly usage |
-| `claudeStatusline.showGitBranch` | `true` | Show git branch |
+| `claudeStatusline.showGitBranch` | `false` | Show git branch — off by default, VS Code's SCM item already shows it |
+| `claudeStatusline.showFolder` | `false` | Show workspace folder — off by default, VS Code already shows it |
 | `claudeStatusline.showSessionDuration` | `true` | Show session duration |
 | `claudeStatusline.showSubscription` | `true` | Show plan badge |
 | `claudeStatusline.alignment` | `"left"` | `"left"` or `"right"` |

@@ -11,14 +11,17 @@ import {
   formatTokenCount,
   formatWindowSize,
   prettifyModelName,
-  resolveBarWidth,
   resolveContextTokens,
   resolveContextWindow,
   progressBar,
-  type BarStyle,
 } from './format';
 import { KEYCHAIN_SERVICE, readCredentials, type OAuthCredentials } from './credentials';
-import { rateLimitSegments, resolveRateLimits, type ResolvedRateLimits } from './ratelimits';
+import { resolveRateLimits, type ResolvedRateLimits } from './ratelimits';
+import {
+  buildStatusText,
+  type SegmentSettings,
+  type StatusData as RenderedStatusData,
+} from './statusline';
 
 // ─── Embedded statusline.sh ───────────────────────────────────────────────────
 // Written to ~/.claude/statusline.sh on activation.
@@ -169,20 +172,13 @@ interface RateCache {
 
 interface CacheResult { data: RateCache; stale: boolean; }
 
-interface StatusData {
-  model: string; rawModel: string;
-  contextPct: number;
-  contextWindow: number;
-  contextTokens: number;
-  branch: string | null;
-  limits: ResolvedRateLimits;
-  sessionMin: number | null;
-  folder: string; cwd: string;
+// Everything the status bar renders, plus the fields only the tooltip and the
+// details popup need. Extending the rendered shape keeps the two from drifting.
+interface StatusData extends RenderedStatusData {
+  rawModel: string;
+  cwd: string;
   source: string;
-  subscriptionType: string;
-  claudeCodeInstalled: boolean;
   rateLimitsAvailable: boolean;
-  cacheStale: boolean;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -523,43 +519,24 @@ async function fetchStatusData(): Promise<StatusData> {
 
 // ─── Status bar ───────────────────────────────────────────────────────────────
 
-function buildStatusText(data: StatusData, cfg: vscode.WorkspaceConfiguration): string {
-  const parts: string[] = [];
-
-  if (!data.claudeCodeInstalled) {
-    parts.push(`$(sparkle) Claude`);
-    if (cfg.get('showGitBranch') && data.branch) { parts.push(`$(git-branch) ${data.branch}`); }
-    parts.push(`$(folder) ${data.folder}`);
-    return parts.join('  │  ');
-  }
-
-  if (cfg.get('showModel'))       { parts.push(`$(sparkle) ${data.model}`); }
-  if (cfg.get('showContextBar'))  {
-    // Read on every build rather than captured at activation, so both settings
-    // take effect on the next refresh tick without a window reload.
-    const width = resolveBarWidth(cfg.get<string>('barWidth') ?? 'medium');
-    const style = (cfg.get<string>('barStyle') ?? 'solid') as BarStyle;
-    // The absolute figure, the at-a-glance read, and the precise scalar — each
-    // answers a question the other two cannot.
-    parts.push(`${formatTokenCount(data.contextTokens)} / ${formatWindowSize(data.contextWindow)}`);
-    parts.push(`${colorThreshold(data.contextPct)}${progressBar(data.contextPct, width, style)} ${data.contextPct}%`);
-  }
-
-  if (cfg.get('showRateLimits')) {
-    parts.push(...rateLimitSegments(data.limits, data.cacheStale, {
-      showSessionReset: cfg.get('showSessionReset') ?? true,
-      showWeeklyReset:  cfg.get('showWeeklyReset') ?? true,
-    }));
-  }
-
-  if (cfg.get('showGitBranch') && data.branch) { parts.push(`$(git-branch) ${data.branch}`); }
-  if (cfg.get('showSessionDuration') && data.sessionMin !== null) { parts.push(`$(clock) ${formatDuration(data.sessionMin)}`); }
-  parts.push(`$(folder) ${data.folder}`);
-  if (cfg.get('showSubscription') && data.subscriptionType) {
-    const labels: Record<string, string> = { pro: 'Pro', team: 'Team', enterprise: 'Ent', free: 'Free' };
-    parts.push(`$(verified) ${labels[data.subscriptionType] ?? data.subscriptionType}`);
-  }
-  return parts.join('  │  ');
+// Reads the configuration on every build rather than capturing it at
+// activation, so a settings change takes effect on the next refresh tick
+// without a window reload. The defaults here are a fallback for a missing
+// contribution point only — package.json is what a user actually gets.
+function readSegmentSettings(cfg: vscode.WorkspaceConfiguration): SegmentSettings {
+  return {
+    showModel:           cfg.get('showModel') ?? true,
+    showContextBar:      cfg.get('showContextBar') ?? true,
+    barWidth:            cfg.get<string>('barWidth') ?? 'medium',
+    barStyle:            cfg.get<string>('barStyle') ?? 'solid',
+    showRateLimits:      cfg.get('showRateLimits') ?? true,
+    showSessionReset:    cfg.get('showSessionReset') ?? true,
+    showWeeklyReset:     cfg.get('showWeeklyReset') ?? true,
+    showGitBranch:       cfg.get('showGitBranch') ?? false,
+    showSessionDuration: cfg.get('showSessionDuration') ?? true,
+    showFolder:          cfg.get('showFolder') ?? false,
+    showSubscription:    cfg.get('showSubscription') ?? true,
+  };
 }
 
 function buildTooltip(data: StatusData): vscode.MarkdownString {
@@ -632,7 +609,7 @@ export function activate(context: vscode.ExtensionContext) {
       const data = await fetchStatusData();
       lastData = data;
       const cfg2 = vscode.workspace.getConfiguration('claudeStatusline');
-      statusBar.text = buildStatusText(data, cfg2);
+      statusBar.text = buildStatusText(data, readSegmentSettings(cfg2));
       statusBar.tooltip = buildTooltip(data);
       statusBar.backgroundColor = data.contextPct >= 80
         ? new vscode.ThemeColor('statusBarItem.errorBackground') : undefined;
