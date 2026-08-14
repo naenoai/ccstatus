@@ -11,6 +11,7 @@ import {
   prettifyModelName,
   progressBar,
 } from './format';
+import { KEYCHAIN_SERVICE, readCredentials, type OAuthCredentials } from './credentials';
 
 // ─── Embedded statusline.sh ───────────────────────────────────────────────────
 // Written to ~/.claude/statusline.sh on activation.
@@ -237,9 +238,7 @@ async function fetchOAuthUsage(): Promise<OAuthUsage | null> {
     return apiUsageCache.data;
   }
   try {
-    if (!fs.existsSync(CREDENTIALS_PATH)) { return null; }
-    const creds = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf8'));
-    const token = creds?.claudeAiOauth?.accessToken;
+    const token = loadCredentials()?.accessToken;
     if (!token) { return null; }
 
     // api.anthropic.com — no Cloudflare, accepts OAuth Bearer token
@@ -264,12 +263,22 @@ async function fetchOAuthUsage(): Promise<OAuthUsage | null> {
 
 // ─── Credentials ─────────────────────────────────────────────────────────────
 
+// Where the credentials live is platform-specific; `readCredentials` owns that
+// decision. This binds it to the real Keychain and filesystem — both readers
+// throw on absence, which the module reads as "this source has nothing".
+function loadCredentials(): OAuthCredentials | null {
+  return readCredentials({
+    platform: process.platform,
+    keychain: () => cp.execSync(
+      `security find-generic-password -s ${JSON.stringify(KEYCHAIN_SERVICE)} -w`,
+      { timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'] },
+    ).toString().trim(),
+    readFile: () => fs.readFileSync(CREDENTIALS_PATH, 'utf8'),
+  });
+}
+
 function readSubscriptionType(): string {
-  try {
-    if (!fs.existsSync(CREDENTIALS_PATH)) { return ''; }
-    const creds = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf8'));
-    return creds?.claudeAiOauth?.subscriptionType ?? '';
-  } catch { return ''; }
+  return loadCredentials()?.subscriptionType ?? '';
 }
 
 // ─── Transcript helpers ───────────────────────────────────────────────────────
