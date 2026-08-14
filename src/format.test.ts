@@ -8,6 +8,10 @@ import {
   formatDuration,
   colorThreshold,
   resolveContextWindow,
+  formatTokenCount,
+  formatWindowSize,
+  resolveBarWidth,
+  resolveContextTokens,
 } from './format';
 
 const STYLES = ['solid', 'hatched', 'blocks', 'faint'] as const;
@@ -314,3 +318,111 @@ test('a malformed override is ignored rather than obeyed', () => {
     assert.equal(resolveContextWindow('claude-haiku-4-5', bad), 200_000, bad);
   }
 });
+
+// ─── formatTokenCount ─────────────────────────────────────────────────────────
+
+// A session that has just started holds a few hundred tokens. Rounding those to
+// the nearest thousand prints `0k`, which reads as "nothing is happening" for
+// the entire opening stretch of a session.
+test('a count below a thousand keeps one decimal', () => {
+  assert.equal(formatTokenCount(400), '0.4k');
+  assert.equal(formatTokenCount(999), '1.0k');
+  assert.equal(formatTokenCount(50), '0.1k');
+});
+
+// The status bar redraws every few seconds. A decimal on a six-figure count
+// would churn its last digit on every refresh — motion in the corner of the eye
+// that carries no information worth the distraction.
+test('a count of a thousand or more rounds to whole thousands', () => {
+  assert.equal(formatTokenCount(136_400), '136k');
+  assert.equal(formatTokenCount(1_000), '1k');
+  assert.equal(formatTokenCount(1_500), '2k');
+  assert.equal(formatTokenCount(199_999), '200k');
+});
+
+// ─── formatWindowSize ─────────────────────────────────────────────────────────
+
+// The denominator is a fixed, round figure the user already knows. It carries
+// no decimal, and a million-token window is the number people say out loud as
+// "1M" — `1000k` is the same quantity spelled in a way nobody uses.
+test('the window size renders without decimals, in the unit people say it in', () => {
+  assert.equal(formatWindowSize(200_000), '200k');
+  assert.equal(formatWindowSize(1_000_000), '1M');
+  assert.equal(formatWindowSize(128_000), '128k');
+});
+
+// ─── resolveBarWidth ──────────────────────────────────────────────────────────
+
+// Width is offered as named sizes rather than a raw number, because there is no
+// way to guess from "12" what the bar will look like. `medium` is the width the
+// bar has always had, so upgrading without touching settings shifts nothing.
+test('each named width maps to its size, with medium unchanged from before', () => {
+  assert.equal(resolveBarWidth('small'), 5);
+  assert.equal(resolveBarWidth('medium'), 10);
+  assert.equal(resolveBarWidth('large'), 15);
+  assert.equal(resolveBarWidth('xl'), 20);
+});
+
+// The manifest declares this an enum, but the value arrives from a hand-editable
+// JSON file that can hold anything. An unknown name has to fall back to the
+// default — a zero-width or NaN width would take the whole segment down.
+test('an unrecognised width falls back to the default', () => {
+  for (const bad of ['', 'huge', 'MEDIUM', '10']) {
+    assert.equal(resolveBarWidth(bad), 10, bad);
+  }
+});
+
+// ─── resolveContextTokens ─────────────────────────────────────────────────────
+
+// When the percentage came from the transcript, the parsed total is the same
+// measurement the percentage was computed from, so it is reported as-is —
+// rounding it back out of the percentage would throw away precision the count
+// already has.
+test('a transcript-derived reading reports the tokens actually counted', () => {
+  assert.equal(
+    resolveContextTokens({ pct: 68, window: 200_000, transcriptTokens: 136_400, fromTranscript: true }),
+    136_400,
+  );
+});
+
+// When the percentage came from the CLI's own cache, no token total was ever
+// parsed for it — the transcript figure beside it describes a different
+// measurement and would contradict the bar. The count is rebuilt from the
+// percentage instead, so the two are the same number by construction.
+test('a cache-derived reading reconstructs the count from the percentage', () => {
+  assert.equal(
+    resolveContextTokens({ pct: 68, window: 200_000, transcriptTokens: 40_000, fromTranscript: false }),
+    136_000,
+  );
+  assert.equal(
+    resolveContextTokens({ pct: 50, window: 1_000_000, transcriptTokens: 0, fromTranscript: false }),
+    500_000,
+  );
+});
+
+// The guarantee the segment exists to make: whatever count is rendered, the
+// percentage it implies is the percentage printed beside it. A user who divides
+// the two numbers must land on the figure the bar is showing.
+test('the rendered count always implies the percentage shown beside it', () => {
+  for (const window of [200_000, 1_000_000]) {
+    for (let pct = 0; pct <= 100; pct++) {
+      for (const fromTranscript of [true, false]) {
+        // A transcript reading's percentage is computed from its own tokens, as
+        // extension.ts does. A cache reading's is not: the stale transcript
+        // total sitting beside it describes some other moment, so it is seeded
+        // with a deliberately contradictory figure here — reaching for it is
+        // exactly the bug this property has to catch.
+        const transcriptTokens = fromTranscript
+          ? Math.round((pct / 100) * window)
+          : 7_777;
+        const tokens = resolveContextTokens({ pct, window, transcriptTokens, fromTranscript });
+        assert.equal(
+          Math.min(100, Math.round((tokens / window) * 100)),
+          pct,
+          `${fromTranscript ? 'transcript' : 'cache'} at ${pct}% of ${window}`,
+        );
+      }
+    }
+  }
+});
+

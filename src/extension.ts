@@ -8,9 +8,14 @@ import {
   colorThreshold,
   formatCountdown,
   formatDuration,
+  formatTokenCount,
+  formatWindowSize,
   prettifyModelName,
+  resolveBarWidth,
+  resolveContextTokens,
   resolveContextWindow,
   progressBar,
+  type BarStyle,
 } from './format';
 import { KEYCHAIN_SERVICE, readCredentials, type OAuthCredentials } from './credentials';
 import { rateLimitSegments, resolveRateLimits, type ResolvedRateLimits } from './ratelimits';
@@ -168,6 +173,7 @@ interface StatusData {
   model: string; rawModel: string;
   contextPct: number;
   contextWindow: number;
+  contextTokens: number;
   branch: string | null;
   limits: ResolvedRateLimits;
   sessionMin: number | null;
@@ -407,9 +413,16 @@ async function fetchStatusData(): Promise<StatusData> {
   let contextWindow = resolveContextWindow(rawModel, contextWindowOverride);
   let resolvedFromTranscript = false;
 
+  // Which measurement produced `contextPct`, recorded as the branches below run
+  // so the token count can be derived from the same source. This observes the
+  // precedence logic; it does not participate in it.
+  let pctFromTranscript = false;
+  let transcriptTokens = 0;
+
   if (newestTranscript) {
     const newestParsed = parseTranscript(newestTranscript);
     sessionMin = newestParsed.sessionMin;
+    transcriptTokens = newestParsed.totalTokens;
     // The transcript's own model beats the cache's: it describes the session
     // whose tokens are being divided by this number.
     if (newestParsed.rawModel) {
@@ -431,6 +444,9 @@ async function fetchStatusData(): Promise<StatusData> {
         : 0;
       if (newestParsed.totalTokens === 0) { source = 'new-session'; }
       else { source = 'transcript'; }
+      // Both outcomes divide the parsed total: zero tokens is a real count of
+      // zero, not an absent measurement.
+      pctFromTranscript = true;
     } else if (!cacheStale && cachedContextPct > 0) {
       // Cache is fresh and same session — trust exact % from CLI payload
       contextPct = cachedContextPct;
@@ -439,6 +455,9 @@ async function fetchStatusData(): Promise<StatusData> {
       contextPct = newestParsed.totalTokens > 0
         ? Math.min(100, Math.round((newestParsed.totalTokens / contextWindow) * 100))
         : cachedContextPct;
+      // Only the first outcome measured the transcript; the fallback is the
+      // cached percentage, which the parsed total does not describe.
+      pctFromTranscript = newestParsed.totalTokens > 0;
     }
 
     if (!rawModel && newestParsed.rawModel) {
@@ -481,9 +500,18 @@ async function fetchStatusData(): Promise<StatusData> {
   if (gb) { branch = gb; }
   else { const sha = await exec(`git -C "${cwd}" rev-parse --short HEAD 2>/dev/null`); if (sha) { branch = sha; } }
 
+  // Derived last, so the window it divides by is the one the percentage above
+  // was actually measured against.
+  const contextTokens = resolveContextTokens({
+    pct: contextPct,
+    window: contextWindow,
+    transcriptTokens,
+    fromTranscript: pctFromTranscript,
+  });
+
   return {
     model: prettifyModelName(rawModel),
-    rawModel, contextPct, contextWindow, branch,
+    rawModel, contextPct, contextWindow, contextTokens, branch,
     limits,
     sessionMin, folder, cwd, source,
     subscriptionType: readSubscriptionType(),
@@ -506,7 +534,16 @@ function buildStatusText(data: StatusData, cfg: vscode.WorkspaceConfiguration): 
   }
 
   if (cfg.get('showModel'))       { parts.push(`$(sparkle) ${data.model}`); }
-  if (cfg.get('showContextBar'))  { parts.push(`${colorThreshold(data.contextPct)}${progressBar(data.contextPct)} ${data.contextPct}%`); }
+  if (cfg.get('showContextBar'))  {
+    // Read on every build rather than captured at activation, so both settings
+    // take effect on the next refresh tick without a window reload.
+    const width = resolveBarWidth(cfg.get<string>('barWidth') ?? 'medium');
+    const style = (cfg.get<string>('barStyle') ?? 'solid') as BarStyle;
+    // The absolute figure, the at-a-glance read, and the precise scalar — each
+    // answers a question the other two cannot.
+    parts.push(`${formatTokenCount(data.contextTokens)} / ${formatWindowSize(data.contextWindow)}`);
+    parts.push(`${colorThreshold(data.contextPct)}${progressBar(data.contextPct, width, style)} ${data.contextPct}%`);
+  }
 
   if (cfg.get('showRateLimits')) {
     parts.push(...rateLimitSegments(data.limits, data.cacheStale, {
@@ -531,7 +568,7 @@ function buildTooltip(data: StatusData): vscode.MarkdownString {
   md.appendMarkdown(`## $(sparkle) Claude Statusline\n\n`);
   md.appendMarkdown(`| | |\n|---|---|\n`);
   md.appendMarkdown(`| **Model** | \`${data.model}\` |\n`);
-  md.appendMarkdown(`| **Context** | ${colorThreshold(data.contextPct) || '🟢'} \`${progressBar(data.contextPct, 20)}\` **${data.contextPct}%** |\n`);
+  md.appendMarkdown(`| **Context** | ${colorThreshold(data.contextPct) || '🟢'} \`${progressBar(data.contextPct, 20)}\` **${data.contextPct}%** (${formatTokenCount(data.contextTokens)} / ${formatWindowSize(data.contextWindow)}) |\n`);
   if (data.branch) { md.appendMarkdown(`| **Branch** | \`${data.branch}\` |\n`); }
   {
     // Each window is reported on its own: one may be measured while the other
@@ -612,7 +649,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (!lastData) { return; }
       vscode.window.showInformationMessage([
         `Model: ${lastData.model}`,
-        `Context: ${lastData.contextPct}%`,
+        `Context: ${lastData.contextPct}% (${formatTokenCount(lastData.contextTokens)} / ${formatWindowSize(lastData.contextWindow)})`,
         lastData.rateLimitsAvailable
           ? `Session: ${lastData.limits.session ? `${lastData.limits.session.pct}%` : 'unavailable'}` +
             `  Weekly: ${lastData.limits.weekly ? `${lastData.limits.weekly.pct}%` : 'unavailable'}`

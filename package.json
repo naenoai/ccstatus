@@ -64,6 +64,40 @@
           "default": true,
           "description": "Show context window progress bar"
         },
+        "claudeStatusline.barWidth": {
+          "type": "string",
+          "default": "medium",
+          "enum": [
+            "small",
+            "medium",
+            "large",
+            "xl"
+          ],
+          "enumDescriptions": [
+            "5 characters",
+            "10 characters",
+            "15 characters",
+            "20 characters"
+          ],
+          "description": "Width of the context window progress bar"
+        },
+        "claudeStatusline.barStyle": {
+          "type": "string",
+          "default": "solid",
+          "enum": [
+            "solid",
+            "hatched",
+            "blocks",
+            "faint"
+          ],
+          "enumDescriptions": [
+            "Filled blocks with sub-character resolution — the most precise option",
+            "Shaded fill on a light track; whole characters only, so it reads to the nearest 1/width",
+            "Filled blocks on a light track; whole characters only, so it reads to the nearest 1/width",
+            "Low-contrast fill; whole characters only, so it reads to the nearest 1/width"
+          ],
+          "description": "Appearance of the context window progress bar"
+        },
         "claudeStatusline.contextWindowSize": {
           "type": "string",
           "default": "",
