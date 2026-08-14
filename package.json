@@ -2,7 +2,7 @@
   "name": "ccstatus",
   "displayName": "CC Status",
   "description": "Shows Claude Code context usage, token counts, model, rate limits, and reset countdowns in the VS Code status bar.",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "publisher": "naenoai",
   "license": "MIT",
   "repository": {
