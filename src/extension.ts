@@ -18,10 +18,23 @@ import {
 // Script renders the terminal statusline AND writes ~/.claude/rate-cache.json
 // which the VS Code extension reads for live rate limit + context data.
 
-const STATUSLINE_VERSION = '8';
+// Cache-busting marker for the generated statusline script. It is written into
+// the script header and compared against on activation: a mismatch rewrites
+// ~/.claude/statusline.sh.
+//
+// Increment this with every new release. Users keep whatever script they
+// already have until this number changes, so a release that forgets to bump it
+// ships its script changes to nobody.
+const CCSTATUS_VERSION = '1';
+
+// Match the version as a whole token, so a v10 or v11 script is not mistaken
+// for v1 merely because it starts with the same digits.
+function isCurrentScript(contents: string): boolean {
+  return new RegExp(`Claude Statusline v${CCSTATUS_VERSION}\\b`).test(contents);
+}
 
 const STATUSLINE_SCRIPT = (function() {
-  const v = STATUSLINE_VERSION;
+  const v = CCSTATUS_VERSION;
   const lines: string[] = [];
   const a = (s: string) => lines.push(s);
 
@@ -176,7 +189,7 @@ function ensureStatuslineScript(): void {
     let needsWrite = true;
     if (fs.existsSync(STATUSLINE_PATH)) {
       const existing = fs.readFileSync(STATUSLINE_PATH, 'utf8');
-      if (existing.includes(`Claude Statusline v${STATUSLINE_VERSION}`)) { needsWrite = false; }
+      if (isCurrentScript(existing)) { needsWrite = false; }
     }
     if (needsWrite) { fs.writeFileSync(STATUSLINE_PATH, STATUSLINE_SCRIPT, { mode: 0o755 }); }
 
@@ -571,7 +584,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (fs.existsSync(STATUSLINE_PATH)) {
         const c = fs.readFileSync(STATUSLINE_PATH, 'utf8');
         out.appendLine(`  version: ${c.match(/Claude Statusline v(\S+)/)?.[1] ?? 'unknown'}`);
-        out.appendLine(`  up-to-date: ${c.includes(`v${STATUSLINE_VERSION}`)}`);
+        out.appendLine(`  up-to-date: ${isCurrentScript(c)}`);
       } else { out.appendLine('  NOT FOUND'); }
 
       out.appendLine('');
