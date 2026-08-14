@@ -15,7 +15,7 @@
   "homepage": "https://github.com/naenoai/ccstatus#readme",
   "icon": "icon.png",
   "galleryBanner": {
-    "color": "#1a0a2e",
+    "color": "#000000",
     "theme": "dark"
   },
   "engines": {
