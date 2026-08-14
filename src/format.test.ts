@@ -201,6 +201,23 @@ test('a future reset time renders as the time remaining', () => {
   assert.equal(formatCountdown(in90Min), '1h 30m');
 });
 
+// The end of the scale that matters most: under an hour is the "about to be
+// cut off" signal, and rounding it into an hour count would bury exactly the
+// urgency the countdown exists to convey.
+test('a reset under an hour away renders in minutes alone', () => {
+  const in45m = new Date(Date.now() + 45 * 60_000 + 1_000).toISOString();
+  assert.equal(formatCountdown(in45m), '45m');
+});
+
+// The boundary in both directions: an hour is the first reading that earns an
+// hour count, and a minute short of it is still minutes.
+test('the hour boundary switches scale exactly once', () => {
+  const in59m = new Date(Date.now() + 59 * 60_000 + 1_000).toISOString();
+  const in60m = new Date(Date.now() + 60 * 60_000 + 1_000).toISOString();
+  assert.equal(formatCountdown(in59m), '59m');
+  assert.equal(formatCountdown(in60m), '1h');
+});
+
 // The seven-day window puts resets days away. Hours alone stop being readable
 // there, so the scale gains a unit rather than counting up to "76h".
 test('a reset more than a day away renders in days and hours', () => {
