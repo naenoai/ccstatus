@@ -36,7 +36,7 @@ import {
 // Increment this with every new release. Users keep whatever script they
 // already have until this number changes, so a release that forgets to bump it
 // ships its script changes to nobody.
-const CCSTATUS_VERSION = '2';
+const CCSTATUS_VERSION = '3';
 
 // Match the version as a whole token, so a v10 or v11 script is not mistaken
 // for v1 merely because it starts with the same digits.

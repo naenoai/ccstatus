@@ -1,10 +1,13 @@
 # CC Status
 
-> Claude Code context, model, session usage, weekly limit, git branch — right in your VS Code status bar. Zero setup required.
+> Claude Code context, model, token counts, session usage, and weekly limit — right in your VS Code status bar. Zero setup required.
 
 ```
-✨ Sonnet 4.6  │  ██········ 13%  │  Session:6%  │  Weekly:19%  │  ↻ 1h 26m  │  ⎇ main  │  📁 my-project  │  ⊙ Team
+✨ Sonnet 4.6  │  26k / 200k  │  █▎········ 13%  │  Session:6%  │  Weekly:19%  │  ↻ 2d 3h  │  ⊙ Pro
 ```
+
+The git branch and workspace folder are available too, switched off by default
+because VS Code already shows them elsewhere.
 
 ---
 
