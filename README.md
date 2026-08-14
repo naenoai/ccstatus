@@ -3,7 +3,7 @@
 > Claude Code context, model, token counts, session usage, and weekly limit — right in your VS Code status bar. Zero setup required.
 
 ```
-✨ Sonnet 4.6  │  26k / 200k  │  █▎········ 13%  │  Session:6%  │  Weekly:19%  │  ↻ 2d 3h  │  ⊙ Pro
+✨ Sonnet 4.6 high  │  26k / 200k  │  █▎········ 13%  │  Session  6%  │  Weekly  19%  ↻ 2d 2h  │  ⊙ Pro
 ```
 
 The git branch and workspace folder are available too, switched off by default
@@ -15,11 +15,11 @@ because VS Code already shows them elsewhere.
 
 | Segment | Description |
 |---|---|
-| `✨ Sonnet 4.6` | Current Claude model |
+| `✨ Sonnet 4.6 high` | Current Claude model, and the reasoning effort when known |
 | `██········ 13%` | Context window usage (green → yellow → red) |
-| `Session:6%` | 5-hour rolling session usage |
-| `Weekly:19%` | 7-day weekly usage |
-| `↻ 1h 26m` | Time until session limit resets |
+| `Session  6%` | 5-hour rolling session usage |
+| `Weekly  19%` | 7-day weekly usage |
+| `↻ 1h 26m` | Time until the limit beside it resets |
 | `⎇ main` | Git branch of workspace (off by default) |
 | `📁 my-project` | Current workspace folder (off by default) |
 | `⊙ Team` | Subscription plan |
@@ -62,6 +62,7 @@ Hover the status bar item for a link to install Claude Code CLI and unlock all s
 |---|---|---|
 | `claudeStatusline.refreshInterval` | `5` | Refresh every N seconds (2–60) |
 | `claudeStatusline.showModel` | `true` | Show model name |
+| `claudeStatusline.showEffort` | `true` | Show reasoning effort beside the model — only when Claude Code recorded one |
 | `claudeStatusline.showContextBar` | `true` | Show context window bar |
 | `claudeStatusline.showRateLimits` | `true` | Show Session/Weekly usage |
 | `claudeStatusline.showGitBranch` | `false` | Show git branch — off by default, VS Code's SCM item already shows it |

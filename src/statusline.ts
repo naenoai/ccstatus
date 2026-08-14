@@ -19,6 +19,11 @@ import { rateLimitSegments, type ResolvedRateLimits } from './ratelimits';
 // identifier — and none of it belongs in the contract for building a line.
 export interface StatusData {
   model: string;
+  // The reasoning effort the session is running at, when the transcript said
+  // so. Empty whenever it did not: Claude Code only began recording effort
+  // recently, and the statusline payload never carries it, so absence is the
+  // normal state for older sessions rather than a fault worth rendering.
+  effort: string;
   contextPct: number;
   contextWindow: number;
   contextTokens: number;
@@ -33,6 +38,7 @@ export interface StatusData {
 
 export interface SegmentSettings {
   showModel: boolean;
+  showEffort: boolean;
   showContextBar: boolean;
   barWidth: string;
   barStyle: string;
@@ -66,7 +72,14 @@ export function buildStatusText(data: StatusData, s: SegmentSettings): string {
     return parts.join(SEPARATOR);
   }
 
-  if (s.showModel) { parts.push(`$(sparkle) ${data.model}`); }
+  // Effort qualifies the model rather than standing beside it — "Opus 5 high"
+  // is one fact about how this session is running, and any separator would read
+  // as a second, unrelated measurement. It therefore rides inside the model
+  // segment and cannot appear when the model is hidden.
+  if (s.showModel) {
+    const effort = s.showEffort && data.effort ? ` ${data.effort}` : '';
+    parts.push(`$(sparkle) ${data.model}${effort}`);
+  }
   if (s.showContextBar) {
     const width = resolveBarWidth(s.barWidth);
     const style = s.barStyle as BarStyle;

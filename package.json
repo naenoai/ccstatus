@@ -59,6 +59,11 @@
           "default": true,
           "description": "Show model display name"
         },
+        "claudeStatusline.showEffort": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the reasoning effort level beside the model name, e.g. \"Opus 5 high\". Only appears when Claude Code recorded an effort for the session, and when Show Model is on."
+        },
         "claudeStatusline.showContextBar": {
           "type": "boolean",
           "default": true,
