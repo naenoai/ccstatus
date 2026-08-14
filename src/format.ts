@@ -23,6 +23,20 @@ const STYLES: Record<BarStyle, { fill: string; track: string; steps: number }> =
   faint:   { fill: '░', track: '·', steps: 1 },
 };
 
+export type BarWidth = 'small' | 'medium' | 'large' | 'xl';
+
+// Width is offered as named sizes because a raw number gives the user nothing
+// to reason about — there is no guessing what "12" looks like in a status bar.
+// `medium` is the width the bar has always had, so an upgrade that touches no
+// settings shifts no layout.
+const BAR_WIDTHS: Record<BarWidth, number> = {
+  small: 5, medium: 10, large: 15, xl: 20,
+};
+
+export function resolveBarWidth(name: string): number {
+  return BAR_WIDTHS[name as BarWidth] ?? BAR_WIDTHS.medium;
+}
+
 export function progressBar(pct: number, width = 10, style: BarStyle = 'solid'): string {
   const { fill, track, steps } = STYLES[style] ?? STYLES.solid;
   // The percentage is derived from parsed transcript data, so a missing or
@@ -48,6 +62,42 @@ export function progressBar(pct: number, width = 10, style: BarStyle = 'solid'):
   const partial = steps === 8 ? EIGHTHS[units % steps] : '';
 
   return fill.repeat(whole) + partial + track.repeat(width - whole - (partial ? 1 : 0));
+}
+
+// The numerator of the context readout. Below a thousand it keeps one decimal,
+// because a fresh session rounded to thousands reads `0k` for its whole opening
+// stretch — a number that looks like the extension is broken rather than idle.
+// At or above a thousand it rounds to whole thousands instead: the status bar
+// redraws every few seconds, and a trailing decimal on a six-figure count would
+// churn on every refresh without informing any decision.
+export function formatTokenCount(tokens: number): string {
+  const k = tokens / 1000;
+  return k < 1 ? `${k.toFixed(1)}k` : `${Math.round(k)}k`;
+}
+
+// The denominator of the context readout. Unlike the numerator this is a fixed,
+// round figure the user already knows, so it carries no decimal — and a
+// million-token window renders as `1M`, the unit people actually say it in.
+export function formatWindowSize(tokens: number): string {
+  return tokens >= 1_000_000
+    ? `${Math.round(tokens / 1_000_000)}M`
+    : `${Math.round(tokens / 1000)}k`;
+}
+
+// The count shown beside the bar has to be derived from whatever produced the
+// percentage, or the two can disagree on screen — a bar reading 68% next to a
+// count reading 40k is worse than showing no count at all.
+export function resolveContextTokens(reading: {
+  pct: number;
+  window: number;
+  transcriptTokens: number;
+  fromTranscript: boolean;
+}): number {
+  if (reading.fromTranscript) { return reading.transcriptTokens; }
+  // Nothing parsed this reading, so the transcript total beside it describes a
+  // different measurement. Rebuilding from the percentage makes count and bar
+  // the same number by construction.
+  return Math.round((reading.pct / 100) * reading.window);
 }
 
 export function formatDuration(minutes: number): string {
