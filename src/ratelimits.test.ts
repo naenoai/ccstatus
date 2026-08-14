@@ -173,7 +173,7 @@ test('the session countdown renders immediately after its percentage', () => {
     weekly: null,
   }, false, BOTH_COUNTDOWNS);
 
-  assert.deepEqual(segments, ['$(warning)Session  62%', '↻ 2h 14m']);
+  assert.deepEqual(segments, ['$(warning)Session  62%  ↻ 2h 14m']);
 });
 
 // Both countdowns on one line: each sits beside the percentage it belongs to,
@@ -185,8 +185,8 @@ test('each countdown renders beside its own percentage', () => {
   }, false, BOTH_COUNTDOWNS);
 
   assert.deepEqual(segments, [
-    '$(warning)Session  62%', '↻ 2h 14m',
-    'Weekly  31%', '↻ 3d 4h',
+    '$(warning)Session  62%  ↻ 2h 14m',
+    'Weekly  31%  ↻ 3d 4h',
   ]);
 });
 
@@ -199,7 +199,7 @@ test('a window with no reset time renders its percentage but no countdown', () =
     weekly: { pct: 31, resetsAt: null },
   }, false, BOTH_COUNTDOWNS);
 
-  assert.deepEqual(segments, ['$(warning)Session  62%', '↻ 2h 14m', 'Weekly  31%']);
+  assert.deepEqual(segments, ['$(warning)Session  62%  ↻ 2h 14m', 'Weekly  31%']);
 });
 
 // A reset time in the past is spent, not a countdown of zero. It renders the
@@ -223,12 +223,12 @@ test('each countdown is suppressed only by its own setting', () => {
 
   assert.deepEqual(
     rateLimitSegments(limits, false, { showSessionReset: true, showWeeklyReset: false }),
-    ['$(warning)Session  62%', '↻ 2h 14m', 'Weekly  31%'],
+    ['$(warning)Session  62%  ↻ 2h 14m', 'Weekly  31%'],
   );
 
   assert.deepEqual(
     rateLimitSegments(limits, false, { showSessionReset: false, showWeeklyReset: true }),
-    ['$(warning)Session  62%', 'Weekly  31%', '↻ 3d 4h'],
+    ['$(warning)Session  62%', 'Weekly  31%  ↻ 3d 4h'],
   );
 
   assert.deepEqual(
@@ -257,7 +257,7 @@ test('a countdown from a stale reading is unmarked and still counts down', () =>
     weekly: null,
   }, true, BOTH_COUNTDOWNS);
 
-  assert.deepEqual(segments, ['Session  ~42%', '↻ 2h 14m']);
+  assert.deepEqual(segments, ['Session  ~42%  ↻ 2h 14m']);
 });
 
 // The bug behind #27: while the editor sits idle the statusline script never

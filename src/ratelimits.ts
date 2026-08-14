@@ -142,17 +142,21 @@ function windowSegments(
   // Colouring is applied per known window, so an omitted one cannot be coloured
   // on the strength of a value that was never measured.
   if (!window) { return []; }
-  const segments = [`${colorThreshold(window.pct)}${label}  ${mark}${window.pct}%`];
+  let segment = `${colorThreshold(window.pct)}${label}  ${mark}${window.pct}%`;
 
   // A window with no reset time — or one already past — contributes no
   // countdown: the same availability rule that governs the percentages,
   // applied one level down. Staleness never marks a countdown, because the
   // reset time is an absolute instant rather than an ageing measurement.
+  //
+  // The countdown joins its percentage inside one segment rather than standing
+  // as its own. A separator between them announced the countdown as a reading
+  // in its own right, when it only ever qualifies the figure to its left.
   if (showCountdown) {
     const remaining = formatCountdown(window.resetsAt);
-    if (remaining) { segments.push(`↻ ${remaining}`); }
+    if (remaining) { segment += `  ↻ ${remaining}`; }
   }
-  return segments;
+  return [segment];
 }
 
 // A percentage of zero is only believable when a reset time accompanies it.

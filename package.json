@@ -2,7 +2,7 @@
   "name": "ccstatus",
   "displayName": "CC Status",
   "description": "Shows Claude Code context usage, token counts, model, rate limits, and reset countdowns in the VS Code status bar.",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "publisher": "naenoai",
   "license": "MIT",
   "repository": {
@@ -58,6 +58,11 @@
           "type": "boolean",
           "default": true,
           "description": "Show model display name"
+        },
+        "claudeStatusline.showEffort": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the reasoning effort level beside the model name, e.g. \"Opus 5 high\". Only appears when Claude Code recorded an effort for the session, and when Show Model is on."
         },
         "claudeStatusline.showContextBar": {
           "type": "boolean",
