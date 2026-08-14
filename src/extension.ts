@@ -361,14 +361,26 @@ function parseTranscript(filePath: string): { rawModel: string; effort: string; 
         }
       } catch { continue; }
     }
+    // Last-seen rather than maximum-seen. A maximum never decreases, so after an
+    // auto-compaction the total stayed pinned at the pre-compaction peak for the
+    // rest of the session; taking the latest reading lets compaction correct
+    // itself as subsequent entries report the smaller window. Only assistant
+    // entries count: they carry a snapshot of the whole window, whereas a
+    // subagent's usage describes a different window entirely and would overwrite
+    // the session's own figure with an unrelated one.
     for (const line of lines) {
       try {
         const e = JSON.parse(line);
-        const u = e.usage || e.message?.usage;
+        if (e.type !== 'assistant' || e.isSidechain) { continue; }
+        const u = e.message?.usage || e.usage;
         if (u) {
           const t = (u.input_tokens || 0) + (u.output_tokens || 0) +
             (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
-          if (t > totalTokens) { totalTokens = t; }
+          // An interrupted turn can record a usage block before any tokens are
+          // counted. That zero is the absence of a reading, not a measurement of
+          // an empty window: latching onto it would blank the bar mid-session,
+          // which is a louder error than the stale peak this loop exists to fix.
+          if (t > 0) { totalTokens = t; }
         }
       } catch { continue; }
     }
