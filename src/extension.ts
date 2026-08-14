@@ -12,6 +12,7 @@ import {
   progressBar,
 } from './format';
 import { KEYCHAIN_SERVICE, readCredentials, type OAuthCredentials } from './credentials';
+import { rateLimitSegments, resolveRateLimits, type ResolvedRateLimits } from './ratelimits';
 
 // ─── Embedded statusline.sh ───────────────────────────────────────────────────
 // Written to ~/.claude/statusline.sh on activation.
@@ -26,7 +27,7 @@ import { KEYCHAIN_SERVICE, readCredentials, type OAuthCredentials } from './cred
 // Increment this with every new release. Users keep whatever script they
 // already have until this number changes, so a release that forgets to bump it
 // ships its script changes to nobody.
-const CCSTATUS_VERSION = '1';
+const CCSTATUS_VERSION = '2';
 
 // Match the version as a whole token, so a v10 or v11 script is not mistaken
 // for v1 merely because it starts with the same digits.
@@ -82,12 +83,17 @@ const STATUSLINE_SCRIPT = (function() {
   a('  elif (( p >= 50 )); then printf "%s" "$yellow"');
   a('  else                     printf "%s" "$green"; fi');
   a('}');
-  a("r5=$(echo \"$payload\" | jq -r '.rate_limits.five_hour.used_percentage // 0')");
-  a("r7=$(echo \"$payload\" | jq -r '.rate_limits.seven_day.used_percentage // 0')");
+  // Absent rate limits stay absent. Defaulting them to 0 made "no data" and
+  // "no usage" indistinguishable downstream, which is the bug this fixes.
+  a("r5=$(echo \"$payload\" | jq -r '.rate_limits.five_hour.used_percentage // empty')");
+  a("r7=$(echo \"$payload\" | jq -r '.rate_limits.seven_day.used_percentage // empty')");
   a("r5_resets=$(echo \"$payload\" | jq -r 'if .rate_limits.five_hour.resets_at != null then .rate_limits.five_hour.resets_at else \"\" end')");
   a("r7_resets=$(echo \"$payload\" | jq -r 'if .rate_limits.seven_day.resets_at != null then .rate_limits.seven_day.resets_at else \"\" end')");
-  a('part_r5="$(rate_color $r5)Session:$(printf "%.0f" $r5)%${reset}"');
-  a('part_r7="$(rate_color $r7)Weekly:$(printf "%.0f" $r7)%${reset}"');
+  // An absent window renders as nothing at all — no label, no colour. Absence
+  // is how the line says "unknown"; a 0% would be a claim it cannot support.
+  a('part_r5=""; part_r7=""');
+  a('[[ -n "$r5" ]] && part_r5="$(rate_color $r5)Session:$(printf "%.0f" $r5)%${reset}"');
+  a('[[ -n "$r7" ]] && part_r7="$(rate_color $r7)Weekly:$(printf "%.0f" $r7)%${reset}"');
   a('');
   a('# ── 6. Session duration ─────────────────────────────────────────────────────');
   a("transcript=$(echo \"$payload\" | jq -r '.transcript_path // \"\"')");
@@ -111,9 +117,13 @@ const STATUSLINE_SCRIPT = (function() {
   a('part_folder="${bold}${cyan}${folder}${reset}"');
   a('');
   a('# ── Write rate-cache.json for VS Code extension ─────────────────────────────');
+  // `null` rather than 0 for an absent window: the extension reads a missing
+  // figure as unknown and omits the segment, instead of reporting a false 0%.
+  a('[[ -n "$r5" ]] && r5_json=$(printf "%.0f" "$r5") || r5_json=null');
+  a('[[ -n "$r7" ]] && r7_json=$(printf "%.0f" "$r7") || r7_json=null');
   a('jq -n \\');
-  a('  --argjson r5    "$(printf "%.0f" $r5)" \\');
-  a('  --argjson r7    "$(printf "%.0f" $r7)" \\');
+  a('  --argjson r5    "$r5_json" \\');
+  a('  --argjson r7    "$r7_json" \\');
   a('  --arg     r5at  "$r5_resets" \\');
   a('  --arg     r7at  "$r7_resets" \\');
   a('  --argjson ctx   "$ctx_int" \\');
@@ -126,7 +136,8 @@ const STATUSLINE_SCRIPT = (function() {
   a('# ── Assemble and print ──────────────────────────────────────────────────────');
   a('line="$part_model${sep}$part_ctx"');
   a('[[ -n "$part_git" ]] && line+="${sep}$part_git"');
-  a('line+="${sep}$part_r5${sep}$part_r7"');
+  a('[[ -n "$part_r5" ]] && line+="${sep}$part_r5"');
+  a('[[ -n "$part_r7" ]] && line+="${sep}$part_r7"');
   a('[[ -n "$part_dur" ]] && line+="${sep}$part_dur"');
   a('line+="${sep}$part_folder"');
   a('printf "%b\\n" "$line"');
@@ -156,8 +167,7 @@ interface StatusData {
   model: string; rawModel: string;
   contextPct: number;
   branch: string | null;
-  r5Pct: number; r7Pct: number;
-  r5ResetsAt: string | null; r7ResetsAt: string | null;
+  limits: ResolvedRateLimits;
   sessionMin: number | null;
   folder: string; cwd: string;
   source: string;
@@ -349,9 +359,6 @@ async function fetchStatusData(): Promise<StatusData> {
   // Source B: OAuth API (api.anthropic.com/api/oauth/usage — no Cloudflare)
   // Source C: stale cache (last known values)
 
-  let r5Pct = 0, r7Pct = 0;
-  let r5ResetsAt: string | null = null, r7ResetsAt: string | null = null;
-  let rateLimitsAvailable = false;
   let cacheStale = false;
   let cachedModel = '', cachedContextPct = 0, cachedCwd = '';
 
@@ -359,32 +366,27 @@ async function fetchStatusData(): Promise<StatusData> {
   if (cacheResult) {
     const c = cacheResult.data;
     cacheStale    = cacheResult.stale;
-    r5Pct         = c.r5 || 0;
-    r7Pct         = c.r7 || 0;
-    r5ResetsAt    = c.r5_resets_at || null;
-    r7ResetsAt    = c.r7_resets_at || null;
     cachedModel   = c.model || '';
     cachedContextPct = c.context_pct || 0;
     cachedCwd     = c.cwd || '';
-    rateLimitsAvailable = true;
   }
 
-  // If cache is stale, try OAuth API for fresh rate limits
-  if (cacheStale || !rateLimitsAvailable) {
+  // A readable cache no longer implies usable rate limits: it may carry the
+  // zeroes written when the CLI payload had no rate_limits key at all. Consult
+  // the OAuth API whenever the cache is stale or leaves a window unknown.
+  let limits = resolveRateLimits({ cache: cacheResult?.data ?? null, oauth: null });
+  if (cacheStale || !limits.session || !limits.weekly) {
     const oauthData = await fetchOAuthUsage();
     if (oauthData) {
-      if (oauthData.five_hour) {
-        r5Pct      = Math.round(oauthData.five_hour.utilization);
-        r5ResetsAt = oauthData.five_hour.resets_at;
-      }
-      if (oauthData.seven_day) {
-        r7Pct      = Math.round(oauthData.seven_day.utilization);
-        r7ResetsAt = oauthData.seven_day.resets_at;
-      }
-      rateLimitsAvailable = true;
-      cacheStale = false;  // OAuth data is fresh
+      const fresh = resolveRateLimits({ cache: cacheResult?.data ?? null, oauth: oauthData });
+      // OAuth data is fresh, so it only clears staleness if it actually
+      // supplied something the cache could not.
+      if (!limits.session || !limits.weekly) { cacheStale = false; }
+      limits = fresh;
     }
   }
+
+  const rateLimitsAvailable = !!(limits.session || limits.weekly);
 
   // ── Model & context ───────────────────────────────────────────────────────
   let rawModel = cachedModel && cachedModel !== 'Claude' ? cachedModel : '';
@@ -459,7 +461,7 @@ async function fetchStatusData(): Promise<StatusData> {
   return {
     model: prettifyModelName(rawModel),
     rawModel, contextPct, branch,
-    r5Pct, r7Pct, r5ResetsAt, r7ResetsAt,
+    limits,
     sessionMin, folder, cwd, source,
     subscriptionType: readSubscriptionType(),
     claudeCodeInstalled,
@@ -483,12 +485,10 @@ function buildStatusText(data: StatusData, cfg: vscode.WorkspaceConfiguration): 
   if (cfg.get('showModel'))       { parts.push(`$(sparkle) ${data.model}`); }
   if (cfg.get('showContextBar'))  { parts.push(`${colorThreshold(data.contextPct)}${progressBar(data.contextPct)} ${data.contextPct}%`); }
 
-  if (cfg.get('showRateLimits') && data.rateLimitsAvailable) {
-    const stale = data.cacheStale ? '~' : '';
-    parts.push(`${colorThreshold(data.r5Pct)}Session:${stale}${data.r5Pct}%`);
-    parts.push(`${colorThreshold(data.r7Pct)}Weekly:${stale}${data.r7Pct}%`);
-    if (data.r5ResetsAt) {
-      const cd = formatCountdown(data.r5ResetsAt);
+  if (cfg.get('showRateLimits')) {
+    parts.push(...rateLimitSegments(data.limits, data.cacheStale));
+    if (data.limits.session?.resetsAt) {
+      const cd = formatCountdown(data.limits.session.resetsAt);
       if (cd) { parts.push(`↻ ${cd}`); }
     }
   }
@@ -511,12 +511,22 @@ function buildTooltip(data: StatusData): vscode.MarkdownString {
   md.appendMarkdown(`| **Model** | \`${data.model}\` |\n`);
   md.appendMarkdown(`| **Context** | ${colorThreshold(data.contextPct) || '🟢'} \`${progressBar(data.contextPct, 20)}\` **${data.contextPct}%** |\n`);
   if (data.branch) { md.appendMarkdown(`| **Branch** | \`${data.branch}\` |\n`); }
-  if (data.rateLimitsAvailable) {
+  {
+    // Each window is reported on its own: one may be measured while the other
+    // is not, and the tooltip is the only place that can say so in words.
     const stale = data.cacheStale ? ' (~stale)' : '';
-    const r5 = formatCountdown(data.r5ResetsAt);
-    const r7 = formatCountdown(data.r7ResetsAt);
-    md.appendMarkdown(`| **Session usage** | ${colorThreshold(data.r5Pct) || '🟢'} **${data.r5Pct}%**${r5 ? ` (resets in ${r5})` : ''}${stale} |\n`);
-    md.appendMarkdown(`| **Weekly limit** | ${colorThreshold(data.r7Pct) || '🟢'} **${data.r7Pct}%**${r7 ? ` (resets in ${r7})` : ''}${stale} |\n`);
+    const rows: [string, typeof data.limits.session][] = [
+      ['Session usage', data.limits.session],
+      ['Weekly limit', data.limits.weekly],
+    ];
+    for (const [label, window] of rows) {
+      if (!window) {
+        md.appendMarkdown(`| **${label}** | _unavailable_ |\n`);
+        continue;
+      }
+      const cd = formatCountdown(window.resetsAt);
+      md.appendMarkdown(`| **${label}** | ${colorThreshold(window.pct) || '🟢'} **${window.pct}%**${cd ? ` (resets in ${cd})` : ''}${stale} |\n`);
+    }
   }
   if (data.sessionMin !== null) { md.appendMarkdown(`| **Session** | ${formatDuration(data.sessionMin)} |\n`); }
   if (data.subscriptionType)    { md.appendMarkdown(`| **Plan** | \`${data.subscriptionType}\` |\n`); }
@@ -526,7 +536,12 @@ function buildTooltip(data: StatusData): vscode.MarkdownString {
   if (!data.claudeCodeInstalled) {
     md.appendMarkdown(`\n> 💡 Install [Claude Code CLI](https://claude.ai/install) to unlock full statusline\n\n`);
   } else if (!data.rateLimitsAvailable) {
-    md.appendMarkdown(`\n> ⚠️ Open Claude Code CLI once to activate rate limit data\n\n`);
+    md.appendMarkdown(
+      `\n> ⚠️ **Rate limit data unavailable.** Claude Code did not report limits ` +
+      `and the usage API could not be reached — this usually means no valid ` +
+      `credentials, or no prompt run yet in Claude Code. Usage is never estimated, ` +
+      `so these segments are hidden rather than shown as 0%.\n\n`,
+    );
   } else if (data.cacheStale) {
     md.appendMarkdown(`\n> ℹ️ Showing last known values (~) — refreshes on next Claude Code prompt\n\n`);
   }
@@ -576,8 +591,11 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.window.showInformationMessage([
         `Model: ${lastData.model}`,
         `Context: ${lastData.contextPct}%`,
-        lastData.rateLimitsAvailable ? `Session: ${lastData.r5Pct}%  Weekly: ${lastData.r7Pct}%` : null,
-        lastData.r5ResetsAt ? `Resets in: ${formatCountdown(lastData.r5ResetsAt)}` : null,
+        lastData.rateLimitsAvailable
+          ? `Session: ${lastData.limits.session ? `${lastData.limits.session.pct}%` : 'unavailable'}` +
+            `  Weekly: ${lastData.limits.weekly ? `${lastData.limits.weekly.pct}%` : 'unavailable'}`
+          : 'Rate limits: unavailable',
+        lastData.limits.session?.resetsAt ? `Resets in: ${formatCountdown(lastData.limits.session.resetsAt)}` : null,
         lastData.branch ? `Branch: ${lastData.branch}` : null,
         lastData.sessionMin !== null ? `Session: ${formatDuration(lastData.sessionMin)}` : null,
         `Source: ${lastData.source}`,
@@ -625,7 +643,8 @@ export function activate(context: vscode.ExtensionContext) {
       });
 
       if (lastData) {
-        out.appendLine(`\nCurrent: "${lastData.model}" ctx=${lastData.contextPct}% 5h=${lastData.r5Pct}% 7d=${lastData.r7Pct}% src=${lastData.source}`);
+        const fmt = (w: { pct: number } | null) => w ? `${w.pct}%` : 'n/a';
+        out.appendLine(`\nCurrent: "${lastData.model}" ctx=${lastData.contextPct}% 5h=${fmt(lastData.limits.session)} 7d=${fmt(lastData.limits.weekly)} src=${lastData.source}`);
       }
       out.show();
     }),
