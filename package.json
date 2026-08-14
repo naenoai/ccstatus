@@ -105,8 +105,13 @@
         },
         "claudeStatusline.showGitBranch": {
           "type": "boolean",
-          "default": true,
-          "description": "Show git branch"
+          "default": false,
+          "description": "Show git branch. Off by default — VS Code's built-in SCM status bar item already shows the branch."
+        },
+        "claudeStatusline.showFolder": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show workspace folder name. Off by default — VS Code already shows it in the title bar, Explorer, and window title."
         },
         "claudeStatusline.showRateLimits": {
           "type": "boolean",
@@ -174,7 +179,7 @@
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
     "test": "tsx --test \"src/**/*.test.ts\"",
-    "typecheck": "tsc -p ./ --noEmit && tsc --noEmit --strict --module Node16 --target ES2020 --esModuleInterop --skipLibCheck src/*.test.ts",
+    "typecheck": "tsc -p ./ --noEmit && tsc --noEmit --strict --module Node16 --target ES2020 --esModuleInterop --skipLibCheck --resolveJsonModule src/*.test.ts",
     "package": "vsce package",
     "publish": "vsce publish"
   },

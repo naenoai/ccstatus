@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **`showFolder` setting**: Controls the workspace folder segment, honoured both on the main status line and on the "Claude Code not installed" fallback path
+
+### Changed
+- **Workspace identity hidden by default** (breaking): `showFolder` defaults to `false` and `showGitBranch` now defaults to `false`, down from `true`. VS Code already shows the folder in the title bar, Explorer, and window title, and ships an SCM status bar item for the branch. The default status line is now model, tokens, context bar, and rate limits — session state only. Both segments remain one setting away for anyone who wants them back.
+
+---
+
 ## [1.1.0] — 2026-04-19
 
 ### Added
