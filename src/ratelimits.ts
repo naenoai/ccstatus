@@ -5,7 +5,7 @@
 // The central distinction: an absent window means "unknown" and is rendered by
 // omission. Only a window that resolves to a value was actually measured.
 
-import { colorThreshold } from './format';
+import { colorThreshold, formatCountdown } from './format';
 
 export interface RateWindow {
   pct: number;
@@ -34,6 +34,16 @@ export interface ResolvedRateLimits {
   weekly: RateWindow | null;
 }
 
+// Each countdown is controlled independently: how long until the session
+// window resets and how long until the weekly one does are different
+// questions, and a reader may want one without the other.
+export interface CountdownSettings {
+  showSessionReset: boolean;
+  showWeeklyReset: boolean;
+}
+
+const NO_COUNTDOWNS: CountdownSettings = { showSessionReset: false, showWeeklyReset: false };
+
 export function resolveRateLimits(sources: RateLimitSources): ResolvedRateLimits {
   const { cache, oauth } = sources;
   return {
@@ -53,13 +63,40 @@ function fromOAuth(window: { utilization: number; resets_at: string | null } | u
 // Renders the rate limit portion of the status bar. Returns one segment per
 // known window and nothing for unknown ones, so absence is how the status bar
 // says "unknown" — there is no placeholder to occupy width permanently.
-export function rateLimitSegments(limits: ResolvedRateLimits, stale: boolean): string[] {
+export function rateLimitSegments(
+  limits: ResolvedRateLimits,
+  stale: boolean,
+  countdowns: CountdownSettings = NO_COUNTDOWNS,
+): string[] {
   const mark = stale ? '~' : '';
-  const segments: string[] = [];
+  return [
+    ...windowSegments(limits.session, 'Session', mark, countdowns.showSessionReset),
+    ...windowSegments(limits.weekly, 'Weekly', mark, countdowns.showWeeklyReset),
+  ];
+}
+
+// One window's contribution: its percentage, then its countdown directly after
+// it. Keeping the pair together here is what guarantees a countdown can never
+// drift away from the percentage it describes.
+function windowSegments(
+  window: RateWindow | null,
+  label: string,
+  mark: string,
+  showCountdown: boolean,
+): string[] {
   // Colouring is applied per known window, so an omitted one cannot be coloured
   // on the strength of a value that was never measured.
-  if (limits.session) { segments.push(`${colorThreshold(limits.session.pct)}Session:${mark}${limits.session.pct}%`); }
-  if (limits.weekly) { segments.push(`${colorThreshold(limits.weekly.pct)}Weekly:${mark}${limits.weekly.pct}%`); }
+  if (!window) { return []; }
+  const segments = [`${colorThreshold(window.pct)}${label}:${mark}${window.pct}%`];
+
+  // A window with no reset time — or one already past — contributes no
+  // countdown: the same availability rule that governs the percentages,
+  // applied one level down. Staleness never marks a countdown, because the
+  // reset time is an absolute instant rather than an ageing measurement.
+  if (showCountdown) {
+    const remaining = formatCountdown(window.resetsAt);
+    if (remaining) { segments.push(`↻ ${remaining}`); }
+  }
   return segments;
 }
 

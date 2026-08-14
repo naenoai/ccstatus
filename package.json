@@ -74,10 +74,20 @@
           "default": true,
           "description": "Show rate limit percentages"
         },
+        "claudeStatusline.showSessionReset": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show time until the 5-hour session limit resets (requires Show Rate Limits)"
+        },
+        "claudeStatusline.showWeeklyReset": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show time until the weekly limit resets (requires Show Rate Limits)"
+        },
         "claudeStatusline.showSessionDuration": {
           "type": "boolean",
           "default": true,
-          "description": "Show session duration"
+          "description": "Show how long the current session has been running"
         },
         "claudeStatusline.alignment": {
           "type": "string",
