@@ -7,6 +7,7 @@ import {
   formatCountdown,
   formatDuration,
   colorThreshold,
+  resolveContextWindow,
 } from './format';
 
 const STYLES = ['solid', 'hatched', 'blocks', 'faint'] as const;
@@ -249,4 +250,67 @@ test('usage past the halfway mark is flagged as a warning', () => {
 
 test('usage approaching the limit is flagged as an error', () => {
   assert.equal(colorThreshold(80), '$(error)');
+});
+
+// ─── resolveContextWindow ─────────────────────────────────────────────────────
+
+// The denominator has to be *some* number even when nothing is known about the
+// model, and 200k is the window every Claude model had when this extension was
+// written. Guessing larger would understate usage, which is the dangerous
+// direction to be wrong in.
+test('an unrecognised model falls back to the 200k default', () => {
+  assert.equal(resolveContextWindow(''), 200_000);
+  assert.equal(resolveContextWindow('some-third-party-model'), 200_000);
+});
+
+// Claude Code appends a window suffix when a model is served with a
+// non-default window. `prettifyModelName` already strips it for display; here
+// it is the most direct statement the model string can make about its size.
+test('a bracketed window suffix sets the limit', () => {
+  assert.equal(resolveContextWindow('claude-sonnet-4-5[1m]'), 1_000_000);
+  assert.equal(resolveContextWindow('claude-sonnet-4-5[200k]'), 200_000);
+});
+
+// The reported bug: a 1M-context model with no suffix and no configuration was
+// measured against 200k, inflating the percentage by 5x. Resolving from the
+// model identifier is what makes the default install correct.
+test('a known long-context model resolves to 1M without configuration', () => {
+  for (const model of [
+    'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6',
+    'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-fable-5', 'claude-mythos-5',
+  ]) {
+    assert.equal(resolveContextWindow(model), 1_000_000, model);
+  }
+});
+
+// Not every current model is 1M — Haiku is still 200k, as are the older Opus
+// and Sonnet releases. A blanket "new models are 1M" rule would overstate
+// headroom on exactly the models people run to save money.
+test('short-context models keep the 200k denominator', () => {
+  for (const model of [
+    'claude-haiku-4-5', 'claude-3-5-haiku-20241022',
+    'claude-opus-4-1', 'claude-sonnet-4-5',
+  ]) {
+    assert.equal(resolveContextWindow(model), 200_000, model);
+  }
+});
+
+// Model-name detection cannot cover third-party endpoints, whose identifiers
+// carry no reliable signal about window size. The override is the escape
+// hatch, and it has to beat detection to be worth having.
+test('an explicit override outranks whatever the model says', () => {
+  assert.equal(resolveContextWindow('claude-opus-5', '200k'), 200_000);
+  assert.equal(resolveContextWindow('claude-haiku-4-5', '1M'), 1_000_000);
+  assert.equal(resolveContextWindow('deepseek-chat', '1000000'), 1_000_000);
+  assert.equal(resolveContextWindow('deepseek-chat', '128k'), 128_000);
+});
+
+// The override is free-text in a settings field, so it will be mistyped. A bad
+// value must not win: falling through leaves the user with a merely imperfect
+// denominator rather than a broken one.
+test('a malformed override is ignored rather than obeyed', () => {
+  for (const bad of ['', '   ', 'banana', '0', '-5', '1M tokens']) {
+    assert.equal(resolveContextWindow('claude-opus-5', bad), 1_000_000, bad);
+    assert.equal(resolveContextWindow('claude-haiku-4-5', bad), 200_000, bad);
+  }
 });
