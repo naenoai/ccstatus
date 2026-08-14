@@ -486,11 +486,10 @@ function buildStatusText(data: StatusData, cfg: vscode.WorkspaceConfiguration): 
   if (cfg.get('showContextBar'))  { parts.push(`${colorThreshold(data.contextPct)}${progressBar(data.contextPct)} ${data.contextPct}%`); }
 
   if (cfg.get('showRateLimits')) {
-    parts.push(...rateLimitSegments(data.limits, data.cacheStale));
-    if (data.limits.session?.resetsAt) {
-      const cd = formatCountdown(data.limits.session.resetsAt);
-      if (cd) { parts.push(`↻ ${cd}`); }
-    }
+    parts.push(...rateLimitSegments(data.limits, data.cacheStale, {
+      showSessionReset: cfg.get('showSessionReset') ?? true,
+      showWeeklyReset:  cfg.get('showWeeklyReset') ?? true,
+    }));
   }
 
   if (cfg.get('showGitBranch') && data.branch) { parts.push(`$(git-branch) ${data.branch}`); }

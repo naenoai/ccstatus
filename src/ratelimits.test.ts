@@ -3,6 +3,13 @@ import assert from 'node:assert/strict';
 
 import { resolveRateLimits, rateLimitSegments } from './ratelimits';
 
+// Reset times are absolute instants, so any expectation about a countdown has
+// to be written relative to now. The extra second absorbs the clock advancing
+// between constructing the input and rendering it.
+const inMinutes = (mins: number) => new Date(Date.now() + mins * 60_000 + 1_000).toISOString();
+
+const BOTH_COUNTDOWNS = { showSessionReset: true, showWeeklyReset: true };
+
 // The bug this module exists to fix: the cache reports zeroes when the CLI
 // payload carried no rate limits at all, and the extension rendered them as a
 // measured 0%. A real 0% always arrives with a reset time, so the timestamp is
@@ -149,6 +156,79 @@ test('an unavailable window is never coloured', () => {
   assert.deepEqual(rateLimitSegments(limits, false), []);
 });
 
+// A percentage means something different ten minutes from a reset than three
+// hours from one. The countdown follows its own percentage so the pairing is
+// unambiguous with two of them on the line.
+test('the session countdown renders immediately after its percentage', () => {
+  const segments = rateLimitSegments({
+    session: { pct: 62, resetsAt: inMinutes(134) },
+    weekly: null,
+  }, false, BOTH_COUNTDOWNS);
+
+  assert.deepEqual(segments, ['$(warning)Session:62%', '↻ 2h 14m']);
+});
+
+// Both countdowns on one line: each sits beside the percentage it belongs to,
+// never pooled at the end where the reader would have to guess the pairing.
+test('each countdown renders beside its own percentage', () => {
+  const segments = rateLimitSegments({
+    session: { pct: 62, resetsAt: inMinutes(134) },
+    weekly: { pct: 31, resetsAt: inMinutes(3 * 24 * 60 + 4 * 60) },
+  }, false, BOTH_COUNTDOWNS);
+
+  assert.deepEqual(segments, [
+    '$(warning)Session:62%', '↻ 2h 14m',
+    'Weekly:31%', '↻ 3d 4h',
+  ]);
+});
+
+// A measured percentage with no reset time is still worth showing; an empty
+// countdown beside it is not. The same availability rule as the percentages,
+// applied to each countdown on its own.
+test('a window with no reset time renders its percentage but no countdown', () => {
+  const segments = rateLimitSegments({
+    session: { pct: 62, resetsAt: inMinutes(134) },
+    weekly: { pct: 31, resetsAt: null },
+  }, false, BOTH_COUNTDOWNS);
+
+  assert.deepEqual(segments, ['$(warning)Session:62%', '↻ 2h 14m', 'Weekly:31%']);
+});
+
+// A reset time in the past is spent, not a countdown of zero. It renders the
+// same as no reset time at all.
+test('a reset time already past renders no countdown', () => {
+  const segments = rateLimitSegments({
+    session: { pct: 62, resetsAt: inMinutes(-30) },
+    weekly: null,
+  }, false, BOTH_COUNTDOWNS);
+
+  assert.deepEqual(segments, ['$(warning)Session:62%']);
+});
+
+// The two countdowns are separately controlled, so neither setting may reach
+// the other's segment, and neither may suppress a percentage.
+test('each countdown is suppressed only by its own setting', () => {
+  const limits = {
+    session: { pct: 62, resetsAt: inMinutes(134) },
+    weekly: { pct: 31, resetsAt: inMinutes(3 * 24 * 60 + 4 * 60) },
+  };
+
+  assert.deepEqual(
+    rateLimitSegments(limits, false, { showSessionReset: true, showWeeklyReset: false }),
+    ['$(warning)Session:62%', '↻ 2h 14m', 'Weekly:31%'],
+  );
+
+  assert.deepEqual(
+    rateLimitSegments(limits, false, { showSessionReset: false, showWeeklyReset: true }),
+    ['$(warning)Session:62%', 'Weekly:31%', '↻ 3d 4h'],
+  );
+
+  assert.deepEqual(
+    rateLimitSegments(limits, false, { showSessionReset: false, showWeeklyReset: false }),
+    ['$(warning)Session:62%', 'Weekly:31%'],
+  );
+});
+
 // Staleness marks a measured value as ageing; it is orthogonal to whether the
 // value is known at all.
 test('stale measurements are marked but still shown', () => {
@@ -158,4 +238,16 @@ test('stale measurements are marked but still shown', () => {
   }, true);
 
   assert.deepEqual(segments, ['Session:~42%']);
+});
+
+// Staleness is a claim about the percentage, which was measured at some past
+// moment. The reset time is an absolute instant, so its countdown is exactly
+// as accurate in a stale reading as in a fresh one and carries no mark.
+test('a countdown from a stale reading is unmarked and still counts down', () => {
+  const segments = rateLimitSegments({
+    session: { pct: 42, resetsAt: inMinutes(134) },
+    weekly: null,
+  }, true, BOTH_COUNTDOWNS);
+
+  assert.deepEqual(segments, ['Session:~42%', '↻ 2h 14m']);
 });

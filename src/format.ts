@@ -70,9 +70,18 @@ export function formatCountdown(raw: string | null): string {
     if (!isFinite(ms) || ms <= 0) { return ''; }
     const totalMins = Math.floor(ms / 60000);
     if (totalMins < 60) { return `${totalMins}m`; }
-    const h = Math.floor(totalMins / 60);
+    const totalHours = Math.floor(totalMins / 60);
+    // The weekly window puts resets days out, where an hour count stops being
+    // readable — "76h" is arithmetic the reader should not have to do. Each
+    // scale drops the unit below it, which at days out no longer informs
+    // any decision.
+    if (totalHours >= 24) {
+      const d = Math.floor(totalHours / 24);
+      const h = totalHours % 24;
+      return `${d}d${h > 0 ? ` ${h}h` : ''}`;
+    }
     const m = totalMins % 60;
-    return `${h}h${m > 0 ? ` ${m}m` : ''}`;
+    return `${totalHours}h${m > 0 ? ` ${m}m` : ''}`;
   } catch { return ''; }
 }
 

@@ -201,6 +201,27 @@ test('a future reset time renders as the time remaining', () => {
   assert.equal(formatCountdown(in90Min), '1h 30m');
 });
 
+// The seven-day window puts resets days away. Hours alone stop being readable
+// there, so the scale gains a unit rather than counting up to "76h".
+test('a reset more than a day away renders in days and hours', () => {
+  const in3d4h = new Date(Date.now() + (3 * 24 + 4) * 3_600_000 + 1_000).toISOString();
+  assert.equal(formatCountdown(in3d4h), '3d 4h');
+});
+
+// A whole number of days drops the hours entirely, the same way a whole number
+// of hours already drops the minutes.
+test('a reset a whole number of days away renders in days alone', () => {
+  const in4d = new Date(Date.now() + 4 * 24 * 3_600_000 + 1_000).toISOString();
+  assert.equal(formatCountdown(in4d), '4d');
+});
+
+// The scale changes at a day and only there: just under it, hours still carry
+// the meaning.
+test('a reset just under a day away still renders in hours', () => {
+  const in23h59m = new Date(Date.now() + (23 * 60 + 59) * 60_000 + 1_000).toISOString();
+  assert.equal(formatCountdown(in23h59m), '23h 59m');
+});
+
 test('a reset time that has already passed renders as nothing', () => {
   const anHourAgo = new Date(Date.now() - 60 * 60_000).toISOString();
   assert.equal(formatCountdown(anHourAgo), '');
