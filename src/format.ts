@@ -98,3 +98,52 @@ export function prettifyModelName(raw: string): string {
   // Already a display name like "Sonnet 4.6" or "Opus"
   return s.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
+
+const DEFAULT_CONTEXT_WINDOW = 200_000;
+
+// Accepts the forms a human or a model string would write a window size in:
+// `1M`, `200k`, or a plain token count. Returns null for anything else, so a
+// malformed value falls through to the next source rather than becoming a
+// nonsense denominator.
+function parseWindowSize(raw: string): number | null {
+  const m = raw.trim().match(/^(\d+(?:\.\d+)?)\s*([kmb])?$/i);
+  if (!m) { return null; }
+  const scale = { k: 1e3, m: 1e6, b: 1e9 }[m[2]?.toLowerCase() ?? ''] ?? 1;
+  const n = Math.round(Number(m[1]) * scale);
+  return n > 0 ? n : null;
+}
+
+// Models served with a 1M window. Matched as substrings against the raw model
+// identifier, so both bare aliases (`claude-opus-5`) and the dated snapshots
+// and provider-prefixed forms that embed them (`anthropic.claude-sonnet-5`)
+// resolve. Anything absent falls back to the 200k default, which is the safe
+// direction to be wrong in: it overstates usage rather than headroom.
+//
+// Haiku is deliberately absent — it remains a 200k model — as are Opus 4.5 and
+// earlier and Sonnet 4.5 and earlier.
+const LONG_CONTEXT_MODELS = [
+  'opus-5', 'opus-4-6', 'opus-4-7', 'opus-4-8',
+  'sonnet-5', 'sonnet-4-6',
+  'fable-5', 'mythos-5', 'mythos-preview',
+];
+
+// Resolves the context window denominator in precedence order: an explicit
+// user override, then whatever the model identifier reveals, then the 200k
+// default. Each tier falls through when it has nothing usable to say.
+export function resolveContextWindow(rawModel: string, override?: string): number {
+  if (override) {
+    const parsed = parseWindowSize(override);
+    if (parsed) { return parsed; }
+  }
+
+  const suffix = rawModel.match(/\[(\d+[kmb]?)\]\s*$/i);
+  if (suffix) {
+    const parsed = parseWindowSize(suffix[1]);
+    if (parsed) { return parsed; }
+  }
+
+  const id = rawModel.toLowerCase();
+  if (LONG_CONTEXT_MODELS.some(m => id.includes(m))) { return 1_000_000; }
+
+  return DEFAULT_CONTEXT_WINDOW;
+}

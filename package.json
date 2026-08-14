@@ -64,6 +64,11 @@
           "default": true,
           "description": "Show context window progress bar"
         },
+        "claudeStatusline.contextWindowSize": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Context window size used as the denominator for the context percentage. Leave empty to detect it from the model. Accepts `200k`, `1M`, or a plain token count — set this for third-party APIs whose window size cannot be inferred from the model name."
+        },
         "claudeStatusline.showGitBranch": {
           "type": "boolean",
           "default": true,

@@ -9,6 +9,7 @@ import {
   formatCountdown,
   formatDuration,
   prettifyModelName,
+  resolveContextWindow,
   progressBar,
 } from './format';
 import { KEYCHAIN_SERVICE, readCredentials, type OAuthCredentials } from './credentials';
@@ -166,6 +167,7 @@ interface CacheResult { data: RateCache; stale: boolean; }
 interface StatusData {
   model: string; rawModel: string;
   contextPct: number;
+  contextWindow: number;
   branch: string | null;
   limits: ResolvedRateLimits;
   sessionMin: number | null;
@@ -397,9 +399,23 @@ async function fetchStatusData(): Promise<StatusData> {
   const transcripts = findTranscripts(cwd);
   const newestTranscript = transcripts.find(t => !t.includes('/subagents/'));
 
+  // The denominator the percentage is measured against, resolved before the
+  // transcript arithmetic below so both percentage sites share it.
+  const contextWindowOverride = vscode.workspace
+    .getConfiguration('claudeStatusline')
+    .get<string>('contextWindowSize', '');
+  let contextWindow = resolveContextWindow(rawModel, contextWindowOverride);
+  let resolvedFromTranscript = false;
+
   if (newestTranscript) {
     const newestParsed = parseTranscript(newestTranscript);
     sessionMin = newestParsed.sessionMin;
+    // The transcript's own model beats the cache's: it describes the session
+    // whose tokens are being divided by this number.
+    if (newestParsed.rawModel) {
+      contextWindow = resolveContextWindow(newestParsed.rawModel, contextWindowOverride);
+      resolvedFromTranscript = true;
+    }
 
     // Detect new session: transcript created AFTER last cache write
     const cacheTs = cacheResult ? cacheResult.data.ts : 0;
@@ -411,7 +427,7 @@ async function fetchStatusData(): Promise<StatusData> {
     if (isNewerThanCache || newestParsed.totalTokens === 0) {
       // New session started after last cache — use transcript tokens
       contextPct = newestParsed.totalTokens > 0
-        ? Math.min(100, Math.round((newestParsed.totalTokens / 200000) * 100))
+        ? Math.min(100, Math.round((newestParsed.totalTokens / contextWindow) * 100))
         : 0;
       if (newestParsed.totalTokens === 0) { source = 'new-session'; }
       else { source = 'transcript'; }
@@ -421,7 +437,7 @@ async function fetchStatusData(): Promise<StatusData> {
     } else {
       // Stale cache — estimate from transcript tokens
       contextPct = newestParsed.totalTokens > 0
-        ? Math.min(100, Math.round((newestParsed.totalTokens / 200000) * 100))
+        ? Math.min(100, Math.round((newestParsed.totalTokens / contextWindow) * 100))
         : cachedContextPct;
     }
 
@@ -452,6 +468,13 @@ async function fetchStatusData(): Promise<StatusData> {
     } catch { /* ignore */ }
   }
 
+  // The two fallbacks above only run when no model was known earlier, so this
+  // fills in a window that was resolved from an empty identifier. It never
+  // overwrites one derived from the transcript actually being measured.
+  if (!resolvedFromTranscript) {
+    contextWindow = resolveContextWindow(rawModel, contextWindowOverride);
+  }
+
   // Git branch
   let branch: string | null = null;
   const gb = await exec(`git -C "${cwd}" symbolic-ref --short HEAD 2>/dev/null`);
@@ -460,7 +483,7 @@ async function fetchStatusData(): Promise<StatusData> {
 
   return {
     model: prettifyModelName(rawModel),
-    rawModel, contextPct, branch,
+    rawModel, contextPct, contextWindow, branch,
     limits,
     sessionMin, folder, cwd, source,
     subscriptionType: readSubscriptionType(),
