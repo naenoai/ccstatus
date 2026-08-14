@@ -6,3 +6,5 @@ tsconfig.json
 **/*.ts
 !out/**
 node_modules/**
+icon.svg
+*.vsix

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- terminal window -->
+  <rect x="16" y="16" width="224" height="224" rx="44" fill="#000000"/>
+  <rect x="16.5" y="16.5" width="223" height="223" rx="43.5" fill="none" stroke="#5a5a5a" stroke-width="3"/>
+
+  <!-- Claude asterisk -->
+  <g stroke="#d97757" stroke-width="14" stroke-linecap="round">
+    <g transform="translate(128 112)">
+      <line x1="0" y1="0" x2="0" y2="-46"/>
+      <line x1="0" y1="0" x2="0" y2="-46" transform="rotate(51.43)"/>
+      <line x1="0" y1="0" x2="0" y2="-46" transform="rotate(102.86)"/>
+      <line x1="0" y1="0" x2="0" y2="-46" transform="rotate(154.29)"/>
+      <line x1="0" y1="0" x2="0" y2="-46" transform="rotate(205.71)"/>
+      <line x1="0" y1="0" x2="0" y2="-46" transform="rotate(257.14)"/>
+      <line x1="0" y1="0" x2="0" y2="-46" transform="rotate(308.57)"/>
+    </g>
+  </g>
+
+
+  <!-- bottom status bar blocks -->
+  <g>
+    <rect x="40" y="200" width="52" height="20" rx="7" fill="#c93f8e"/>
+    <rect x="100" y="200" width="34" height="20" rx="7" fill="#3fbf7f"/>
+    <rect x="142" y="200" width="34" height="20" rx="7" fill="#e0a63c"/>
+    <rect x="184" y="200" width="32" height="20" rx="7" fill="#3fb6c9"/>
+  </g>
+</svg>
