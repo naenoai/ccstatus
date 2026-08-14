@@ -1,7 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { resolveRateLimits, rateLimitSegments } from './ratelimits';
+import {
+  resolveRateLimits,
+  rateLimitSegments,
+  rememberRateLimits,
+  shouldAttemptFetch,
+} from './ratelimits';
 
 // Reset times are absolute instants, so any expectation about a countdown has
 // to be written relative to now. The extra second absorbs the clock advancing
@@ -250,4 +255,91 @@ test('a countdown from a stale reading is unmarked and still counts down', () =>
   }, true, BOTH_COUNTDOWNS);
 
   assert.deepEqual(segments, ['Session:~42%', '↻ 2h 14m']);
+});
+
+// The bug behind #27: while the editor sits idle the statusline script never
+// runs, so the cache ages out and the OAuth API becomes the only source. A
+// single failed call used to resolve to nothing and empty the status bar, with
+// the next refresh five seconds later filling it back in — a percentage that
+// blinks in and out while the user is not even typing.
+test('a resolution that knows nothing falls back to the last known reading', () => {
+  const known = resolveRateLimits({
+    cache: { r5: 42, r7: 13, r5_resets_at: '2026-08-15T02:00:00Z', r7_resets_at: '2026-08-20T00:00:00Z' },
+    oauth: null,
+  });
+
+  const blank = resolveRateLimits({ cache: null, oauth: null });
+  const held = rememberRateLimits(blank, { limits: known, at: Date.now() });
+
+  assert.deepEqual(held.limits.session, { pct: 42, resetsAt: '2026-08-15T02:00:00Z' });
+  assert.deepEqual(held.limits.weekly, { pct: 13, resetsAt: '2026-08-20T00:00:00Z' });
+  // The reading is a remembered one, so it must not pass for a fresh figure.
+  assert.equal(held.stale, true);
+});
+
+// A remembered reading is worth showing for as long as it is plausibly still
+// true, and no longer. A day matches the point at which the on-disk cache is
+// discarded outright, so both sources forget on the same schedule.
+test('a remembered reading older than a day is forgotten', () => {
+  const known = resolveRateLimits({
+    cache: { r5: 42, r7: 13, r5_resets_at: '2026-08-15T02:00:00Z', r7_resets_at: '2026-08-20T00:00:00Z' },
+    oauth: null,
+  });
+
+  const aDayAndAnHourAgo = Date.now() - (25 * 60 * 60 * 1000);
+  const held = rememberRateLimits(
+    resolveRateLimits({ cache: null, oauth: null }),
+    { limits: known, at: aDayAndAnHourAgo },
+  );
+
+  assert.equal(held.limits.session, null);
+  assert.equal(held.limits.weekly, null);
+  assert.deepEqual(rateLimitSegments(held.limits, held.stale), []);
+});
+
+// Falling back is for the case where nothing at all resolved. A refresh that
+// measured one window has genuinely new information, and the remembered
+// reading must not be allowed to overwrite it with an older figure.
+test('a fresh partial reading is preferred over a fuller remembered one', () => {
+  const known = resolveRateLimits({
+    cache: { r5: 42, r7: 13, r5_resets_at: '2026-08-15T02:00:00Z', r7_resets_at: '2026-08-20T00:00:00Z' },
+    oauth: null,
+  });
+
+  const partial = resolveRateLimits({
+    cache: { r5: 55, r7: null, r5_resets_at: '2026-08-15T06:00:00Z', r7_resets_at: '' },
+    oauth: null,
+  });
+
+  const held = rememberRateLimits(partial, { limits: known, at: Date.now() });
+
+  assert.deepEqual(held.limits.session, { pct: 55, resetsAt: '2026-08-15T06:00:00Z' });
+  // The weekly window is unknown right now, and says so rather than borrowing
+  // the remembered 13%.
+  assert.equal(held.limits.weekly, null);
+  assert.equal(held.stale, false);
+});
+
+// The other half of #27: the status bar refreshes every few seconds, and once
+// the cache goes stale every one of those refreshes reached for the API. A
+// failure was recorded nowhere, so a network blip produced a retry on every
+// tick — each one able to fail and blank the line again.
+test('a failed fetch is not retried on the very next refresh', () => {
+  const justFailed = { lastAttempt: Date.now(), succeeded: false };
+
+  assert.equal(shouldAttemptFetch(justFailed, Date.now() + 5_000), false);
+});
+
+// The pause has to end. An outage that resolves itself must not leave the
+// status bar permanently empty because the extension stopped asking.
+test('the API is tried again once the pause has elapsed', () => {
+  const failedLongAgo = { lastAttempt: Date.now(), succeeded: false };
+
+  assert.equal(shouldAttemptFetch(failedLongAgo, Date.now() + 61_000), true);
+});
+
+// Nothing has been tried yet on a freshly started editor, which is the first
+// moment the status bar needs a figure.
+test('the first fetch of a session always goes ahead', () => {
+  assert.equal(shouldAttemptFetch(null), true);
 });

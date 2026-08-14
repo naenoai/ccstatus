@@ -16,7 +16,14 @@ import {
   progressBar,
 } from './format';
 import { KEYCHAIN_SERVICE, readCredentials, type OAuthCredentials } from './credentials';
-import { resolveRateLimits, type ResolvedRateLimits } from './ratelimits';
+import {
+  resolveRateLimits,
+  rememberRateLimits,
+  shouldAttemptFetch,
+  type FetchAttempt,
+  type RememberedRateLimits,
+  type ResolvedRateLimits,
+} from './ratelimits';
 import {
   buildStatusText,
   type SegmentSettings,
@@ -226,6 +233,10 @@ function ensureStatuslineScript(): void {
 const CACHE_STALE_SECS   = 120;
 const CACHE_DISCARD_SECS = 86400;
 
+// The last rate limits that resolved to something, held so a refresh which
+// resolves nothing has a reading to fall back on rather than an empty line.
+let rememberedLimits: RememberedRateLimits | null = null;
+
 function readRateCache(): CacheResult | null {
   try {
     if (!fs.existsSync(RATE_CACHE_PATH)) { return null; }
@@ -246,11 +257,17 @@ interface OAuthUsage {
 let apiUsageCache: { data: OAuthUsage; ts: number } | null = null;
 const API_CACHE_SECS = 60;
 
+// The last call's outcome, so a failure can be waited out. Without this every
+// refresh during an outage means another call, and every one of them can fail.
+let lastFetchAttempt: FetchAttempt | null = null;
+
 async function fetchOAuthUsage(): Promise<OAuthUsage | null> {
   // Use cached result if fresh
   if (apiUsageCache && (Date.now() / 1000 - apiUsageCache.ts) < API_CACHE_SECS) {
     return apiUsageCache.data;
   }
+  if (!shouldAttemptFetch(lastFetchAttempt)) { return null; }
+  lastFetchAttempt = { lastAttempt: Date.now(), succeeded: false };
   try {
     const token = loadCredentials()?.accessToken;
     if (!token) { return null; }
@@ -269,6 +286,7 @@ async function fetchOAuthUsage(): Promise<OAuthUsage | null> {
     const json = JSON.parse(raw) as OAuthUsage;
     if (json.five_hour || json.seven_day) {
       apiUsageCache = { data: json, ts: Date.now() / 1000 };
+      lastFetchAttempt = { lastAttempt: Date.now(), succeeded: true };
       return json;
     }
     return null;
@@ -389,6 +407,21 @@ async function fetchStatusData(): Promise<StatusData> {
       limits = fresh;
     }
   }
+
+  // Both sources are intermittent — the cache is only rewritten while the user
+  // is active, and the API can fail on its own — so a refresh that resolved
+  // nothing is a gap rather than news. Hold the last reading across it, marked
+  // stale, instead of letting the segments blink out and back in (#27).
+  // Only a reading this refresh actually resolved is worth remembering. Re-
+  // storing a remembered one would keep pushing its timestamp forward and it
+  // could never age out.
+  if (limits.session || limits.weekly) {
+    rememberedLimits = { limits, at: Date.now() };
+  }
+
+  const held = rememberRateLimits(limits, rememberedLimits);
+  limits = held.limits;
+  if (held.stale) { cacheStale = true; }
 
   const rateLimitsAvailable = !!(limits.session || limits.weekly);
 
