@@ -8,6 +8,7 @@
 
 ### Changed
 
+- **The context bar has a new default style, `minimal`**, drawing its unfilled remainder as a thin rule rather than shaded cells: `███───────` rather than `███░░░░░░░`. `░` is a stippled glyph that the status bar's proportional UI font renders with its own cell borders, so the track read as a strip of separate squares competing with the fill instead of as one bar behind it. The previous `solid` default had a related problem in the same font — its partial-block glyphs (`▎`, `▌`, `▉`) carry no guaranteed advance width and commonly draw at a full cell, making the bar overstate progress against the percentage beside it. `minimal` gives up sub-character resolution to keep the bar and its number in agreement. All four previous styles remain selectable through `claudeStatusline.barStyle`, so an explicit setting is untouched.
 - **Reset countdowns no longer have a separator to their left**, reading `Weekly  19%  ↻ 2d 2h` rather than `Weekly  19%  │  ↻ 2d 2h`. A countdown only ever qualifies the percentage beside it, and the separator announced it as a reading in its own right. The pairing itself is unchanged: each countdown still sits with the window it belongs to, and `showSessionReset` and `showWeeklyReset` still control them independently.
 
 ## [1.2.1] — 2026-08-14

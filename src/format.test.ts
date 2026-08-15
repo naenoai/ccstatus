@@ -14,8 +14,13 @@ import {
   resolveContextTokens,
 } from './format';
 
-const STYLES = ['solid', 'hatched', 'blocks', 'faint'] as const;
+const STYLES = ['minimal', 'solid', 'hatched', 'blocks', 'faint'] as const;
 const WIDTHS = [5, 10, 15, 20];
+
+// The glyph each style draws its unfilled remainder with.
+const TRACKS: Record<(typeof STYLES)[number], string> = {
+  minimal: '─', solid: '·', hatched: '░', blocks: '░', faint: '·',
+};
 
 // The bar sits inline in the status bar, so a bar that changes length as it
 // fills would shift every segment to its right. Width is a hard guarantee.
@@ -61,6 +66,7 @@ test('100% renders completely full', () => {
       const bar = progressBar(100, width, style);
       const fill = style === 'hatched' ? '▓' : style === 'faint' ? '░' : '█';
       assert.equal(bar, fill.repeat(width), `${style} at width ${width}`);
+      assert.ok(!bar.includes(TRACKS[style]), `${style} at width ${width} kept track glyphs`);
     }
   }
 });
@@ -71,6 +77,8 @@ test('the documented examples render exactly as specified', () => {
   assert.equal(progressBar(1, 10, 'solid'), '▏·········');
   assert.equal(progressBar(16, 10, 'solid'), '█▌········');
   assert.equal(progressBar(94, 10, 'solid'), '█████████▍');
+  assert.equal(progressBar(1, 10, 'minimal'), '█─────────');
+  assert.equal(progressBar(94, 10, 'minimal'), '█████████─');
   assert.equal(progressBar(1, 10, 'hatched'), '▓░░░░░░░░░');
   assert.equal(progressBar(94, 10, 'blocks'), '█████████░');
   assert.equal(progressBar(94, 10, 'faint'), '░░░░░░░░░·');
@@ -138,7 +146,7 @@ const FILL_WEIGHT: Record<string, number> = {
 // `faint` fills with '░', which is a track glyph in other styles; measure each
 // bar against its own style's vocabulary rather than a global notion of "fill".
 function measureFill(bar: string, style: (typeof STYLES)[number]): number {
-  const track = style === 'solid' || style === 'faint' ? '·' : '░';
+  const track = TRACKS[style];
   return [...bar]
     .map((ch) => (ch === track ? 0 : FILL_WEIGHT[ch] ?? 0))
     .reduce((a, b) => a + b, 0);
@@ -176,7 +184,7 @@ test('solid resolves eight times finer than the whole-character styles', () => {
     return worst;
   };
   assert.equal(worstError('solid'), 1);
-  for (const style of ['hatched', 'blocks', 'faint'] as const) {
+  for (const style of ['minimal', 'hatched', 'blocks', 'faint'] as const) {
     // 9%, not 10%: the worst case is 1%, where the low-end clamp forces a whole
     // block. Above that, truncation alone bounds the error at one unit.
     assert.equal(worstError(style), 9);
@@ -184,7 +192,26 @@ test('solid resolves eight times finer than the whole-character styles', () => {
 });
 
 test('bar fills in proportion to the percentage used', () => {
-  assert.equal(progressBar(50, 10), '█████·····');
+  assert.equal(progressBar(50, 10), '█████─────');
+});
+
+// The default must not draw its fill with a partial-block glyph. Those have no
+// guaranteed advance width in the proportional UI font the status bar uses, so
+// the filled run occupies more than its share of the bar's width regardless of
+// what the arithmetic says — the bar overstating progress.
+test('the default style renders every filled cell at a uniform width', () => {
+  const bar = progressBar(23, 10);
+  assert.equal(bar, '██────────');
+  assert.ok(!/[▏▎▍▌▋▊▉]/.test(bar), `default bar uses variable-width fill: ${bar}`);
+});
+
+// What the shaded styles get wrong: `░` is a stippled cell that the UI font
+// draws with its own borders, so the unfilled remainder reads as a row of
+// separate squares competing with the fill rather than as one bar behind it.
+test('the default style draws its track as a rule, not shaded cells', () => {
+  const bar = progressBar(33, 10);
+  assert.ok(!bar.includes('░'), `default bar uses shaded track cells: ${bar}`);
+  assert.equal(bar, '███───────');
 });
 
 test('a raw model id renders as a human-readable name', () => {

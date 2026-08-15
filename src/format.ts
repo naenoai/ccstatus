@@ -11,12 +11,19 @@ export function colorThreshold(pct: number): string {
 // three-eighths full. Index 0 is empty and never rendered as fill.
 const EIGHTHS = ['', '▏', '▎', '▍', '▌', '▋', '▊', '▉'];
 
-export type BarStyle = 'solid' | 'hatched' | 'blocks' | 'faint';
+export type BarStyle = 'minimal' | 'solid' | 'hatched' | 'blocks' | 'faint';
 
 // `solid` resolves to an eighth of a character; the rest are whole-character
 // only, trading resolution for appearance. `hatched` and `blocks` differ solely
 // in fill glyph — `hatched` is the lower-contrast variant.
+//
+// `minimal` runs the fill along a box-drawing rule instead of a shaded cell.
+// `░` is a stipple that the proportional UI font draws with its own cell edges,
+// so a row of them reads as a strip of separate squares rather than the empty
+// remainder of one bar; `─` has no interior, joins to its neighbours, and
+// recedes to the trough the fill sits in.
 const STYLES: Record<BarStyle, { fill: string; track: string; steps: number }> = {
+  minimal: { fill: '█', track: '─', steps: 1 },
   solid:   { fill: '█', track: '·', steps: 8 },
   hatched: { fill: '▓', track: '░', steps: 1 },
   blocks:  { fill: '█', track: '░', steps: 1 },
@@ -37,8 +44,23 @@ export function resolveBarWidth(name: string): number {
   return BAR_WIDTHS[name as BarWidth] ?? BAR_WIDTHS.medium;
 }
 
-export function progressBar(pct: number, width = 10, style: BarStyle = 'solid'): string {
-  const { fill, track, steps } = STYLES[style] ?? STYLES.solid;
+// `minimal` is the default rather than `solid`, despite `solid` measuring eight
+// times finer. The accuracy `solid` reports is measured in logical eighths and
+// only reaches the screen in a monospace font; the status bar renders in the
+// proportional UI font, where the eighth-block partials (`▎`, `▌`, `▉`) carry no
+// guaranteed advance width and commonly fall back to a font that draws them at a
+// full cell. A 23% bar then paints three solid cells and reads as ~30% — the bar
+// overstating progress, which is the one direction the truncation below exists
+// to rule out.
+//
+// That argument rules out `solid` but not the shaded whole-character styles;
+// what rules those out is how the track reads. A `░` run is drawn as a series of
+// bordered cells, so the unfilled remainder competes with the fill for attention
+// and the bar as a whole reads as a row of squares. `minimal` keeps the whole-
+// character fill and its uniform advance width, and spends the track on a rule
+// that stays visually subordinate to it.
+export function progressBar(pct: number, width = 10, style: BarStyle = 'minimal'): string {
+  const { fill, track, steps } = STYLES[style] ?? STYLES.minimal;
   // The percentage is derived from parsed transcript data, so a missing or
   // malformed figure arrives as NaN. Treat it as empty rather than letting it
   // propagate into repeat() and throw.
