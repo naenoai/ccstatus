@@ -88,15 +88,17 @@
         },
         "claudeStatusline.barStyle": {
           "type": "string",
-          "default": "solid",
+          "default": "minimal",
           "enum": [
+            "minimal",
             "solid",
             "hatched",
             "blocks",
             "faint"
           ],
           "enumDescriptions": [
-            "Filled blocks with sub-character resolution — the most precise option",
+            "Filled blocks on a thin rule; whole characters only, so it reads to the nearest 1/width. The shaded styles draw their unfilled track as a row of bordered cells in the status bar's proportional UI font, which reads as a strip of squares rather than one bar",
+            "Filled blocks with sub-character resolution. Most precise in a monospace font, but the status bar uses a proportional UI font in which the partial-block glyphs often render at a full cell width, drawing the bar wider than the percentage beside it",
             "Shaded fill on a light track; whole characters only, so it reads to the nearest 1/width",
             "Filled blocks on a light track; whole characters only, so it reads to the nearest 1/width",
             "Low-contrast fill; whole characters only, so it reads to the nearest 1/width"

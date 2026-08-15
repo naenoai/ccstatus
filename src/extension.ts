@@ -597,7 +597,7 @@ function readSegmentSettings(cfg: vscode.WorkspaceConfiguration): SegmentSetting
     showEffort:          cfg.get('showEffort') ?? true,
     showContextBar:      cfg.get('showContextBar') ?? true,
     barWidth:            cfg.get<string>('barWidth') ?? 'medium',
-    barStyle:            cfg.get<string>('barStyle') ?? 'solid',
+    barStyle:            cfg.get<string>('barStyle') ?? 'minimal',
     showRateLimits:      cfg.get('showRateLimits') ?? true,
     showSessionReset:    cfg.get('showSessionReset') ?? true,
     showWeeklyReset:     cfg.get('showWeeklyReset') ?? true,

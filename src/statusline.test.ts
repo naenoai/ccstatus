@@ -12,7 +12,7 @@ const DEFAULTS: SegmentSettings = {
   showEffort: true,
   showContextBar: true,
   barWidth: 'medium',
-  barStyle: 'solid',
+  barStyle: 'minimal',
   showRateLimits: true,
   showSessionReset: true,
   showWeeklyReset: true,
